@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["game", "chat"]
+}
+
+model Room {
+  id            String      @id @default(cuid())
+  name          String
+  maxPlayers    Int         @default(12)
+  entryFee      Int         // GOR tokens
+  isActive      Boolean     @default(true)
+  currentRound  Int         @default(0)
+  gameState     GameState   @default(WAITING)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  // Relations
+  players       Player[]
+  chatMessages  ChatMessage[]
+  gameRounds    GameRound[]
+  
+  @@map("rooms")
+  @@schema("game")
+}
+
+model Player {
+  id            String   @id @default(cuid())
+  walletAddress String   @unique
+  displayName   String?
+  roomId        String?
+  isSpectator   Boolean  @default(false)
+  joinedAt      DateTime @default(now())
+  lastActive    DateTime @default(now())
+  
+  // Relations
+  room          Room?     @relation(fields: [roomId], references: [id])
+  sentMessages  ChatMessage[] @relation("SentMessages")
+  bets          Bet[]
+  
+  // Stats
+  totalGames    Int      @default(0)
+  totalWinnings Int      @default(0)
+  favoriteSlots Json?    // Store preferred slot numbers
+  
+  @@map("players")
+  @@schema("game")
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  roomId    String
+  playerId  String
+  message   String
+  timestamp DateTime    @default(now())
+  type      MessageType @default(CHAT)
+  
+  // Relations
+  room      Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  player    Player @relation("SentMessages", fields: [playerId], references: [id])
+  
+  @@map("chat_messages")
+  @@schema("chat")
+}
+
+model GameRound {
+  id            String   @id @default(cuid())
+  roomId        String
+  roundNumber   Int
+  randomSeed    String?  // From blockchain
+  winningSlot   Int?     // 1-15
+  ballPath      Json?    // Store physics simulation data
+  startTime     DateTime @default(now())
+  endTime       DateTime?
+  
+  // Relations
+  room          Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  bets          Bet[]
+  
+  @@unique([roomId, roundNumber])
+  @@map("game_rounds")
+  @@schema("game")
+}
+
+model Bet {
+  id          String @id @default(cuid())
+  playerId    String
+  roundId     String
+  slotNumber  Int    // 1-15
+  amount      Int    // GOR tokens
+  multiplier  Float  // 2x, 3x, 5x, 8x based on slot
+  isWinner    Boolean @default(false)
+  payout      Int     @default(0)
+  placedAt    DateTime @default(now())
+  
+  // Relations
+  player      Player    @relation(fields: [playerId], references: [id])
+  round       GameRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  
+  @@map("bets")
+  @@schema("game")
+}
+
+enum GameState {
+  WAITING
+  BETTING
+  BALL_DROP
+  RESULTS
+  FINISHED
+
+  @@schema("game")
+}
+
+enum MessageType {
+  CHAT
+  SYSTEM
+  BET_PLACED
+  GAME_EVENT
+
+  @@schema("chat")
+}
