@@ -1,33 +1,140 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, Shield, Zap } from 'lucide-react';
+import { Wallet, Shield, Zap, AlertCircle, Play } from 'lucide-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { useGorbaganaWallet } from '../hooks/useGorbaganaWallet';
 import { useGameStore } from '../store/gameStore';
 
 export const WalletConnect: React.FC = () => {
-  const [walletAddress, setWalletAddress] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
-  const { connect } = useGameStore();
+  const { publicKey, connected, balance, signAuthMessage } = useGorbaganaWallet();
+  const { authenticate } = useGameStore();
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleConnect = async () => {
-    if (!walletAddress.trim()) return;
+  const handleAuthenticate = async () => {
+    if (!connected || !publicKey) return;
     
-    setIsConnecting(true);
+    setIsAuthenticating(true);
+    setError(null);
     
-    // Simulate wallet connection delay
-    setTimeout(() => {
-      connect(walletAddress.trim());
-      setIsConnecting(false);
-    }, 1500);
-  };
-
-  const generateMockAddress = () => {
-    const chars = '0123456789ABCDEFabcdef';
-    let address = '0x';
-    for (let i = 0; i < 40; i++) {
-      address += chars.charAt(Math.floor(Math.random() * chars.length));
+    try {
+      const signature = await signAuthMessage();
+      await authenticate(publicKey, signature);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed');
+    } finally {
+      setIsAuthenticating(false);
     }
-    setWalletAddress(address);
   };
+
+  // Demo mode - bypass wallet connection for testing
+  const handleDemoMode = async () => {
+    setIsAuthenticating(true);
+    setError(null);
+    
+    try {
+      // Create a demo wallet address
+      const demoWalletAddress = '0x' + Math.random().toString(16).substr(2, 40);
+      const demoSignature = 'demo-signature-' + Date.now();
+      
+      await authenticate(demoWalletAddress, demoSignature);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Demo authentication failed');
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  if (connected && publicKey) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md"
+        >
+          {/* Wallet Connected */}
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-8 border border-slate-700 shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="w-20 h-20 bg-gradient-to-br from-green-500 to-emerald-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <Wallet className="w-10 h-10 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">🎒 Backpack Connected</h2>
+              <p className="text-gray-400">
+                {publicKey.slice(0, 8)}...{publicKey.slice(-8)}
+              </p>
+            </div>
+
+            {/* Balance Display */}
+            <div className="mb-6 p-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">GOR Balance</span>
+                <span className="text-2xl font-bold text-white">
+                  {balance.toFixed(4)} GOR
+                </span>
+              </div>
+            </div>
+
+            {/* Authenticate Button */}
+            <motion.button
+              onClick={handleAuthenticate}
+              disabled={isAuthenticating}
+              whileHover={{ scale: !isAuthenticating ? 1.02 : 1 }}
+              whileTap={{ scale: !isAuthenticating ? 0.98 : 1 }}
+              className={`
+                w-full py-4 px-6 rounded-lg font-bold text-lg transition-all duration-200
+                flex items-center justify-center space-x-2
+                ${!isAuthenticating
+                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500 shadow-lg hover:shadow-xl'
+                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                }
+              `}
+            >
+              {isAuthenticating ? (
+                <>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+                  />
+                  <span>Authenticating...</span>
+                </>
+              ) : (
+                <>
+                  <Shield className="w-5 h-5" />
+                  <span>Enter Gorbagana Plinko</span>
+                </>
+              )}
+            </motion.button>
+
+            {/* Error Display */}
+            {error && (
+              <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center">
+                <AlertCircle className="w-4 h-4 text-red-400 mr-2" />
+                <span className="text-red-400 text-sm">{error}</span>
+              </div>
+            )}
+
+            {/* Features */}
+            <div className="mt-8 space-y-4">
+              <div className="flex items-center space-x-3 text-sm text-gray-400">
+                <Shield className="w-4 h-4 text-green-400" />
+                <span>🎒 Backpack + Gorbagana Testnet</span>
+              </div>
+              <div className="flex items-center space-x-3 text-sm text-gray-400">
+                <Zap className="w-4 h-4 text-yellow-400" />
+                <span>Real GOR token betting</span>
+              </div>
+              <div className="flex items-center space-x-3 text-sm text-gray-400">
+                <Wallet className="w-4 h-4 text-purple-400" />
+                <span>No RPC setup required!</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-6">
@@ -50,100 +157,101 @@ export const WalletConnect: React.FC = () => {
             Gorbagana Plinko Wars
           </h1>
           <p className="text-gray-400">
-            Connect your wallet to start playing
+            🎒 Connect with Backpack wallet for the best experience
           </p>
         </motion.div>
 
-        {/* Connection Form */}
+        {/* Wallet Connection */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
           className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-8 border border-slate-700 shadow-2xl"
         >
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-400 mb-3">
-              Wallet Address
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={walletAddress}
-                onChange={(e) => setWalletAddress(e.target.value)}
-                placeholder="0x..."
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
-              />
-              <motion.button
-                onClick={generateMockAddress}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 px-3 py-1 bg-purple-600 text-white text-xs rounded font-semibold hover:bg-purple-500 transition-colors"
-              >
-                Demo
-              </motion.button>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              Click "Demo" for a mock wallet address
-            </p>
+          <div className="flex justify-center mb-6">
+            <WalletMultiButton className="!bg-gradient-to-r !from-purple-600 !to-pink-600 hover:!from-purple-500 hover:!to-pink-500 !font-bold !px-8 !py-3 !text-lg" />
           </div>
 
+          {/* Demo Mode Button */}
           <motion.button
-            onClick={handleConnect}
-            disabled={!walletAddress.trim() || isConnecting}
-            whileHover={{ scale: walletAddress.trim() && !isConnecting ? 1.02 : 1 }}
-            whileTap={{ scale: walletAddress.trim() && !isConnecting ? 0.98 : 1 }}
+            onClick={handleDemoMode}
+            disabled={isAuthenticating}
+            whileHover={{ scale: !isAuthenticating ? 1.02 : 1 }}
+            whileTap={{ scale: !isAuthenticating ? 0.98 : 1 }}
             className={`
-              w-full py-4 px-6 rounded-lg font-bold text-lg transition-all duration-200
-              flex items-center justify-center space-x-2
-              ${walletAddress.trim() && !isConnecting
-                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500 shadow-lg hover:shadow-xl'
+              w-full py-3 px-6 rounded-lg font-bold text-sm transition-all duration-200
+              flex items-center justify-center space-x-2 mb-6
+              ${!isAuthenticating
+                ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:from-blue-500 hover:to-cyan-500'
                 : 'bg-gray-600 text-gray-400 cursor-not-allowed'
               }
             `}
           >
-            {isConnecting ? (
+            {isAuthenticating ? (
               <>
                 <motion.div
                   animate={{ rotate: 360 }}
                   transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+                  className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
                 />
                 <span>Connecting...</span>
               </>
             ) : (
               <>
-                <Wallet className="w-5 h-5" />
-                <span>Connect Wallet</span>
+                <Play className="w-4 h-4" />
+                <span>Demo Mode (Testing)</span>
               </>
             )}
           </motion.button>
 
-          {/* Features */}
-          <div className="mt-8 space-y-4">
-            <div className="flex items-center space-x-3 text-sm text-gray-400">
-              <Shield className="w-4 h-4 text-green-400" />
-              <span>Secure wallet signature authentication</span>
-            </div>
-            <div className="flex items-center space-x-3 text-sm text-gray-400">
-              <Zap className="w-4 h-4 text-yellow-400" />
-              <span>Real-time multiplayer gaming</span>
-            </div>
-            <div className="flex items-center space-x-3 text-sm text-gray-400">
-              <Wallet className="w-4 h-4 text-purple-400" />
-              <span>GOR token betting system</span>
+          {/* Backpack Info */}
+          <div className="p-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-lg mb-6">
+            <div className="text-center">
+              <p className="text-sm text-purple-400 font-semibold flex items-center justify-center">
+                🎒 <span className="ml-2">Backpack + Gorbagana = Perfect Match</span>
+              </p>
+              <p className="text-xs text-gray-400 mt-2">
+                Backpack automatically handles Gorbagana testnet - no manual setup needed!
+              </p>
             </div>
           </div>
-        </motion.div>
 
-        {/* Footer */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="text-center text-xs text-gray-500 mt-6"
-        >
-          By connecting, you agree to our Terms of Service and Privacy Policy
-        </motion.p>
+          {/* Instructions */}
+          <div className="space-y-3 text-sm text-gray-400">
+            <div className="flex items-start space-x-3">
+              <span className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold mt-0.5">1</span>
+              <span>Install <strong>Backpack wallet</strong> extension (recommended for Gorbagana)</span>
+            </div>
+            <div className="flex items-start space-x-3">
+              <span className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold mt-0.5">2</span>
+              <span><strong>No RPC setup required</strong> - Backpack handles Gorbagana automatically</span>
+            </div>
+            <div className="flex items-start space-x-3">
+              <span className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs font-bold mt-0.5">3</span>
+              <span>Get test GOR tokens and start playing!</span>
+            </div>
+          </div>
+
+          {/* Error Display */}
+          {error && (
+            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center">
+              <AlertCircle className="w-4 h-4 text-red-400 mr-2" />
+              <span className="text-red-400 text-sm">{error}</span>
+            </div>
+          )}
+
+          {/* Backpack Download Link */}
+          <div className="mt-6 text-center">
+            <a 
+              href="https://www.backpack.app" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-purple-400 hover:text-purple-300 text-sm underline"
+            >
+              Don't have Backpack? Download here →
+            </a>
+          </div>
+        </motion.div>
       </motion.div>
     </div>
   );

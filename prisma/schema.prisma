@@ -13,7 +13,7 @@ model Room {
   id            String      @id @default(cuid())
   name          String
   maxPlayers    Int         @default(12)
-  entryFee      Int         // GOR tokens
+  entryFee      Int         // GOR tokens in smallest unit
   isActive      Boolean     @default(true)
   currentRound  Int         @default(0)
   gameState     GameState   @default(WAITING)
@@ -30,23 +30,27 @@ model Room {
 }
 
 model Player {
-  id            String   @id @default(cuid())
-  walletAddress String   @unique
-  displayName   String?
-  roomId        String?
-  isSpectator   Boolean  @default(false)
-  joinedAt      DateTime @default(now())
-  lastActive    DateTime @default(now())
+  id                    String   @id @default(cuid())
+  walletAddress         String   @unique
+  displayName           String?
+  roomId                String?
+  isSpectator           Boolean  @default(false)
+  joinedAt              DateTime @default(now())
+  lastActive            DateTime @default(now())
+  
+  // Gorbagana specific fields
+  lastSignature         String?  // Last authentication signature
+  verified              Boolean  @default(false)
   
   // Relations
-  room          Room?     @relation(fields: [roomId], references: [id])
-  sentMessages  ChatMessage[] @relation("SentMessages")
-  bets          Bet[]
+  room                  Room?     @relation(fields: [roomId], references: [id])
+  sentMessages          ChatMessage[] @relation("SentMessages")
+  bets                  Bet[]
   
   // Stats
-  totalGames    Int      @default(0)
-  totalWinnings Int      @default(0)
-  favoriteSlots Json?    // Store preferred slot numbers
+  totalGames            Int      @default(0)
+  totalWinnings         BigInt   @default(0) // Use BigInt for large GOR amounts
+  favoriteSlots         Json?    // Store preferred slot numbers
   
   @@map("players")
   @@schema("game")
@@ -72,7 +76,7 @@ model GameRound {
   id            String   @id @default(cuid())
   roomId        String
   roundNumber   Int
-  randomSeed    String?  // From blockchain
+  randomSeed    String?  // From blockchain or verifiable random
   winningSlot   Int?     // 1-15
   ballPath      Json?    // Store physics simulation data
   startTime     DateTime @default(now())
@@ -88,19 +92,24 @@ model GameRound {
 }
 
 model Bet {
-  id          String @id @default(cuid())
-  playerId    String
-  roundId     String
-  slotNumber  Int    // 1-15
-  amount      Int    // GOR tokens
-  multiplier  Float  // 2x, 3x, 5x, 8x based on slot
-  isWinner    Boolean @default(false)
-  payout      Int     @default(0)
-  placedAt    DateTime @default(now())
+  id                    String @id @default(cuid())
+  playerId              String
+  roundId               String?
+  slotNumber            Int    // 1-15
+  amount                BigInt // GOR tokens in smallest unit (like lamports)
+  multiplier            Float  // 2x, 3x, 5x, 8x based on slot
+  isWinner              Boolean @default(false)
+  payout                BigInt  @default(0)
+  placedAt              DateTime @default(now())
+  
+  // Gorbagana blockchain fields
+  transactionSignature String  @unique
+  blockHeight           Int?
+  confirmed             Boolean @default(false)
   
   // Relations
-  player      Player    @relation(fields: [playerId], references: [id])
-  round       GameRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  player                Player    @relation(fields: [playerId], references: [id])
+  round                 GameRound? @relation(fields: [roundId], references: [id], onDelete: Cascade)
   
   @@map("bets")
   @@schema("game")

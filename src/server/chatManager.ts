@@ -4,7 +4,27 @@ import type { MessageType } from '../types/game';
 
 export class ChatManager {
   constructor(private wss: WebSocketServer) {
-    // No longer needs PrismaClient as a dependency - uses singleton
+    this.ensureSystemPlayer();
+  }
+
+  private async ensureSystemPlayer() {
+    try {
+      await prisma.player.upsert({
+        where: { walletAddress: 'SYSTEM_PLAYER' },
+        update: { 
+          displayName: 'System',
+          lastActive: new Date()
+        },
+        create: {
+          walletAddress: 'SYSTEM_PLAYER',
+          displayName: 'System',
+          isSpectator: true,
+          verified: true
+        }
+      });
+    } catch (error) {
+      console.error('Error ensuring system player exists:', error);
+    }
   }
 
   async handleChatMessage(roomId: string, walletAddress: string, message: string) {
@@ -46,15 +66,28 @@ export class ChatManager {
       return chatMessage;
     } catch (error) {
       console.error('Error handling chat message:', error);
+      throw error;
     }
   }
 
   async handleSystemMessage(roomId: string, message: string) {
     try {
+      // Get or create system player
+      const systemPlayer = await prisma.player.upsert({
+        where: { walletAddress: 'SYSTEM_PLAYER' },
+        update: { lastActive: new Date() },
+        create: {
+          walletAddress: 'SYSTEM_PLAYER',
+          displayName: 'System',
+          isSpectator: true,
+          verified: true
+        }
+      });
+
       const systemMessage = await prisma.chatMessage.create({
         data: {
           roomId,
-          playerId: 'system',
+          playerId: systemPlayer.id,
           message,
           type: 'SYSTEM'
         },
@@ -77,23 +110,30 @@ export class ChatManager {
       return systemMessage;
     } catch (error) {
       console.error('Error handling system message:', error);
+      // Don't throw error for system messages - they're not critical
+      return null;
     }
   }
 
   async getChatHistory(roomId: string, limit = 50) {
-    return await prisma.chatMessage.findMany({
-      where: { roomId },
-      include: {
-        player: {
-          select: {
-            walletAddress: true,
-            displayName: true
+    try {
+      return await prisma.chatMessage.findMany({
+        where: { roomId },
+        include: {
+          player: {
+            select: {
+              walletAddress: true,
+              displayName: true
+            }
           }
-        }
-      },
-      orderBy: { timestamp: 'desc' },
-      take: limit
-    });
+        },
+        orderBy: { timestamp: 'desc' },
+        take: limit
+      });
+    } catch (error) {
+      console.error('Error getting chat history:', error);
+      return [];
+    }
   }
 
   private broadcastToRoom(roomId: string, message: any) {
@@ -101,7 +141,11 @@ export class ChatManager {
     // maintain a mapping of WebSocket connections to rooms
     this.wss.clients.forEach((client) => {
       if (client.readyState === 1) { // WebSocket.OPEN
-        client.send(JSON.stringify(message));
+        try {
+          client.send(JSON.stringify(message));
+        } catch (error) {
+          console.error('Error broadcasting message:', error);
+        }
       }
     });
   }

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { Room, Player, ChatMessage, GameRound, WebSocketMessage } from '../types/game';
+import { authAPI, betAPI } from '../utils/api';
 
 interface GameStore {
   // Connection state
@@ -32,6 +33,7 @@ interface GameStore {
   connect: (walletAddress: string) => void;
   disconnect: () => void;
   sendMessage: (message: WebSocketMessage) => void;
+  authenticate: (walletAddress: string, signature: string) => Promise<void>;
   
   // Room actions
   setRooms: (rooms: Room[]) => void;
@@ -39,7 +41,7 @@ interface GameStore {
   leaveRoom: () => void;
   
   // Game actions
-  placeBet: (slotNumber: number, amount: number) => void;
+  placeBet: (slotNumber: number, amount: number, transactionSignature?: string) => Promise<void>;
   setSelectedSlot: (slot: number | null) => void;
   setBetAmount: (amount: number) => void;
   setShowBetModal: (show: boolean) => void;
@@ -69,12 +71,35 @@ export const useGameStore = create<GameStore>()(
     chatMessages: [],
     typingUsers: new Set(),
     selectedSlot: null,
-    betAmount: 100,
+    betAmount: 0.1, // Default GOR amount
     showBetModal: false,
     
-    // Connection actions
+    // Authentication with signature verification
+    authenticate: async (walletAddress: string, signature: string) => {
+      try {
+        console.log('🔐 Authenticating wallet:', walletAddress);
+        
+        // Verify signature on backend using API utility
+        const { player, token } = await authAPI.verify(walletAddress, signature);
+        
+        // Store auth token and connect to WebSocket
+        localStorage.setItem('auth_token', token);
+        set({ currentPlayer: player });
+        
+        // Connect to WebSocket with auth token
+        get().connect(walletAddress);
+        
+      } catch (error) {
+        console.error('Authentication error:', error);
+        throw error;
+      }
+    },
+    
     // Connection actions
     connect: (walletAddress: string) => {
+      // Get auth token
+      const token = localStorage.getItem('auth_token');
+      
       // Construct WebSocket URL dynamically
       const clientHostname = window.location.hostname; // e.g., "localhost" or "something--5173--hash.host.com"
       const clientPort = window.location.port; // e.g., "5173"
@@ -98,10 +123,9 @@ export const useGameStore = create<GameStore>()(
       // If it's not localhost and not the webcontainer pattern,
       // it will default to using clientHostname and serverPort, e.g., ws://custom.domain:3001
 
-      const wsUrl = `ws://${wsHostname}${wsPort ? `:${wsPort}` : ''}?address=${walletAddress}`;
+      const wsUrl = `ws://${wsHostname}${wsPort ? `:${wsPort}` : ''}?token=${token}&address=${walletAddress}`;
       
       console.log(`Attempting WebSocket connection to: ${wsUrl}`); // Added for debugging
-      
       
       const ws = new WebSocket(wsUrl);
       
@@ -114,7 +138,7 @@ export const useGameStore = create<GameStore>()(
       };
       
       ws.onerror = (error) => {
-        set({ connectionError: 'Connection failed due to ${error}', isConnected: false });
+        set({ connectionError: `Connection failed due to ${error}`, isConnected: false });
       };
       
       ws.onmessage = (event) => {
@@ -128,6 +152,8 @@ export const useGameStore = create<GameStore>()(
       if (ws) {
         ws.close();
       }
+      // Clear auth token
+      localStorage.removeItem('auth_token');
       set({ 
         isConnected: false, 
         ws: null, 
@@ -167,14 +193,40 @@ export const useGameStore = create<GameStore>()(
       set({ currentRoom: null, chatMessages: [] });
     },
     
-    // Game actions
-    placeBet: (slotNumber: number, amount: number) => {
-      get().sendMessage({
-        type: 'bet_placed',
-        data: { slotNumber, amount },
-        timestamp: Date.now()
-      });
-      set({ showBetModal: false });
+    // Updated placeBet with transaction signature
+    placeBet: async (slotNumber: number, amount: number, transactionSignature?: string) => {
+      try {
+        // If we have a transaction signature, verify it first
+        if (transactionSignature && transactionSignature !== 'demo-transaction-signature') {
+          console.log('🔍 Verifying transaction:', transactionSignature);
+          
+          await betAPI.verify(
+            transactionSignature,
+            get().currentPlayer?.walletAddress || '',
+            amount,
+            slotNumber
+          );
+          
+          console.log('✅ Transaction verified successfully');
+        }
+        
+        // Send bet to WebSocket
+        get().sendMessage({
+          type: 'bet_placed',
+          data: { 
+            slotNumber, 
+            amount, 
+            transactionSignature: transactionSignature || 'demo-transaction-signature',
+            timestamp: Date.now()
+          },
+          timestamp: Date.now()
+        });
+        
+        set({ showBetModal: false });
+      } catch (error) {
+        console.error('Bet placement error:', error);
+        throw error;
+      }
     },
     
     setSelectedSlot: (slot: number | null) => set({ selectedSlot: slot }),

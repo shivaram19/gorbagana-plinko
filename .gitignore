@@ -23,3 +23,24 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# dependencies
+node_modules/
+
+# build output
+dist/
+build/
+
+# env files
+.env
+.env.local
+.env.*.local
+
+# Prisma generated client (optional)
+node_modules/@prisma/client/
+
+# OS junk
+.DS_Store
+
+# VS Code settings
+.vscode/
