@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { Room, Player, ChatMessage, GameRound, GameState, WebSocketMessage } from '../types/game';
+import { Room, Player, ChatMessage, GameRound, WebSocketMessage } from '../types/game';
 
 interface GameStore {
   // Connection state
@@ -73,14 +73,35 @@ export const useGameStore = create<GameStore>()(
     showBetModal: false,
     
     // Connection actions
+    // Connection actions
     connect: (walletAddress: string) => {
-      // Construct WebSocket URL dynamically for webcontainer environment
-      const hostname = window.location.hostname;
+      // Construct WebSocket URL dynamically
+      const clientHostname = window.location.hostname; // e.g., "localhost" or "something--5173--hash.host.com"
+      const clientPort = window.location.port; // e.g., "5173"
       const serverPort = import.meta.env.VITE_SERVER_PORT || '3001';
+
+      let wsHostname = clientHostname;
+      let wsPort = serverPort; // Default to serverPort for WebSocket connection
+
+      // Check if running locally
+      if (clientHostname === 'localhost' || clientHostname === '127.0.0.1') {
+        // For local development, wsHostname is already correct (localhost),
+        // and we explicitly use serverPort for the WebSocket connection.
+        // wsPort is already set to serverPort.
+      } else if (clientPort && clientHostname.includes(`--${clientPort}--`)) {
+        // For environments where client port is part of the hostname (e.g., webcontainer pattern)
+        // Try to replace client port part in hostname with server port part
+        wsHostname = clientHostname.replace(`--${clientPort}--`, `--${serverPort}--`);
+        // In this case, the port is part of the hostname, so we don't specify it separately in the URL.
+        wsPort = ''; 
+      }
+      // If it's not localhost and not the webcontainer pattern,
+      // it will default to using clientHostname and serverPort, e.g., ws://custom.domain:3001
+
+      const wsUrl = `ws://${wsHostname}${wsPort ? `:${wsPort}` : ''}?address=${walletAddress}`;
       
-      // Replace the client port (5173) with server port (3001) in the hostname
-      const wsHostname = hostname.replace(/--5173--/, `--${serverPort}--`);
-      const wsUrl = `ws://${wsHostname}?address=${walletAddress}`;
+      console.log(`Attempting WebSocket connection to: ${wsUrl}`); // Added for debugging
+      
       
       const ws = new WebSocket(wsUrl);
       
@@ -93,7 +114,7 @@ export const useGameStore = create<GameStore>()(
       };
       
       ws.onerror = (error) => {
-        set({ connectionError: 'Connection failed', isConnected: false });
+        set({ connectionError: 'Connection failed due to ${error}', isConnected: false });
       };
       
       ws.onmessage = (event) => {
