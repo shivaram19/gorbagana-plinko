@@ -19,7 +19,7 @@ if (typeof BigInt !== 'undefined') {
 
 // Custom JSON stringifier that handles BigInt
 const customStringify = (obj: any) => {
-  return JSON.stringify(obj, (key, value) => {
+  return JSON.stringify(obj, (_key, value) => {
     if (typeof value === 'bigint') {
       return value.toString();
     }
@@ -336,7 +336,7 @@ async function handleWebSocketMessage(
 }
 
 // REST API endpoints
-app.get('/api/rooms', async (req, res) => {
+app.get('/api/rooms', async (_req, res) => {
   try {
     const rooms = await gameRoomManager.getActiveRooms();
     const serializedRooms = serializeResponse(rooms);
@@ -360,7 +360,7 @@ app.post('/api/rooms', async (req, res) => {
 });
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
@@ -369,7 +369,7 @@ app.get('/health', (req, res) => {
 });
 
 // API health check
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.json({ 
     status: 'ok', 
     api: 'working',
