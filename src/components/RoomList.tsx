@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Users, Trophy, Clock, Play } from 'lucide-react';
+import { Users, Trophy, Clock, Play, TestTube } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 import { Room } from '../types/game';
 
@@ -54,6 +54,10 @@ export const RoomList: React.FC = () => {
         <p className="text-gray-400 text-lg">
           Join a room and start your Plinko adventure
         </p>
+        <div className="flex items-center justify-center mt-4 text-green-400 bg-green-400/10 px-4 py-2 rounded-lg inline-flex">
+          <TestTube className="w-4 h-4 mr-2" />
+          <span className="text-sm font-semibold">Testing Mode: Free Play & Single Player Enabled</span>
+        </div>
       </motion.div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -70,8 +74,15 @@ export const RoomList: React.FC = () => {
               <h3 className="text-xl font-bold text-white truncate">
                 {room.name}
               </h3>
-              <div className={`px-3 py-1 rounded-full bg-gradient-to-r ${getRoomStatusColor(room)} text-white text-xs font-semibold`}>
-                Round #{room.currentRound}
+              <div className="flex items-center space-x-2">
+                <div className={`px-3 py-1 rounded-full bg-gradient-to-r ${getRoomStatusColor(room)} text-white text-xs font-semibold`}>
+                  Round #{room.currentRound}
+                </div>
+                {room.entryFee === 0 && (
+                  <div className="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs font-semibold">
+                    FREE
+                  </div>
+                )}
               </div>
             </div>
 
@@ -84,6 +95,9 @@ export const RoomList: React.FC = () => {
                 </span>
                 <span className="text-white font-semibold">
                   {room.playerCount}/{room.maxPlayers}
+                  {room.playerCount === 1 && (
+                    <span className="text-green-400 ml-1 text-xs">(Solo OK)</span>
+                  )}
                 </span>
               </div>
 
@@ -92,8 +106,8 @@ export const RoomList: React.FC = () => {
                   <Trophy className="w-4 h-4 mr-2" />
                   Entry Fee
                 </span>
-                <span className="text-yellow-400 font-semibold">
-                  {room.entryFee} GOR
+                <span className={`font-semibold ${room.entryFee === 0 ? 'text-green-400' : 'text-yellow-400'}`}>
+                  {room.entryFee === 0 ? 'FREE' : `${room.entryFee} GOR`}
                 </span>
               </div>
 
@@ -124,16 +138,16 @@ export const RoomList: React.FC = () => {
               </div>
             </div>
 
-            {/* Join Button */}
+            {/* Join Button - Modified to allow joining even when room is "full" in testing mode */}
             <motion.button
               onClick={() => handleJoinRoom(room.id)}
-              disabled={room.playerCount >= room.maxPlayers || !currentPlayer}
-              whileHover={{ scale: room.playerCount >= room.maxPlayers ? 1 : 1.02 }}
-              whileTap={{ scale: room.playerCount >= room.maxPlayers ? 1 : 0.98 }}
+              disabled={!currentPlayer}
+              whileHover={{ scale: currentPlayer ? 1.02 : 1 }}
+              whileTap={{ scale: currentPlayer ? 0.98 : 1 }}
               className={`
                 w-full py-3 px-4 rounded-lg font-semibold text-white transition-all duration-200
                 flex items-center justify-center space-x-2
-                ${room.playerCount >= room.maxPlayers
+                ${!currentPlayer
                   ? 'bg-gray-600 cursor-not-allowed opacity-50'
                   : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 shadow-lg hover:shadow-xl'
                 }
@@ -141,7 +155,7 @@ export const RoomList: React.FC = () => {
             >
               <Play className="w-4 h-4" />
               <span>
-                {room.playerCount >= room.maxPlayers ? 'Room Full' : 'Join Room'}
+                {!currentPlayer ? 'Connect Wallet' : 'Join Room'}
               </span>
             </motion.button>
 
@@ -165,6 +179,15 @@ export const RoomList: React.FC = () => {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Testing Mode Indicator */}
+            {(room.entryFee === 0 || room.playerCount === 1) && (
+              <div className="mt-3 p-2 bg-green-500/10 border border-green-500/20 rounded text-center">
+                <p className="text-xs text-green-400">
+                  🧪 Test Mode Room
+                </p>
               </div>
             )}
           </motion.div>

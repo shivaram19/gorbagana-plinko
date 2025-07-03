@@ -28,6 +28,9 @@ interface GameStore {
   betAmount: number;
   showBetModal: boolean;
   
+  // Testing mode state
+  testingMode: boolean;
+  
   // Actions
   connect: (walletAddress: string) => void;
   disconnect: () => void;
@@ -69,8 +72,9 @@ export const useGameStore = create<GameStore>()(
     chatMessages: [],
     typingUsers: new Set(),
     selectedSlot: null,
-    betAmount: 100,
+    betAmount: 0, // Default to 0 for testing mode
     showBetModal: false,
+    testingMode: true, // Enable testing mode
     
     // Connection actions
     connect: (walletAddress: string) => {
@@ -86,6 +90,7 @@ export const useGameStore = create<GameStore>()(
       
       ws.onopen = () => {
         set({ isConnected: true, connectionError: null, ws });
+        console.log('🧪 Connected in testing mode - Zero betting enabled');
       };
       
       ws.onclose = () => {
@@ -146,18 +151,24 @@ export const useGameStore = create<GameStore>()(
       set({ currentRoom: null, chatMessages: [] });
     },
     
-    // Game actions
+    // Game actions - Modified for testing mode
     placeBet: (slotNumber: number, amount: number) => {
+      // In testing mode, allow any amount including 0
+      const betAmount = Math.max(0, amount); // Ensure non-negative
+      
       get().sendMessage({
         type: 'bet_placed',
-        data: { slotNumber, amount },
+        data: { slotNumber, amount: betAmount },
         timestamp: Date.now()
       });
       set({ showBetModal: false });
+      
+      // Log for testing
+      console.log(`🧪 Test bet placed: ${betAmount} GOR on slot ${slotNumber}`);
     },
     
     setSelectedSlot: (slot: number | null) => set({ selectedSlot: slot }),
-    setBetAmount: (amount: number) => set({ betAmount: amount }),
+    setBetAmount: (amount: number) => set({ betAmount: Math.max(0, amount) }), // Allow 0
     setShowBetModal: (show: boolean) => set({ showBetModal: show }),
     
     // Chat actions
@@ -202,7 +213,34 @@ export const useGameStore = create<GameStore>()(
           break;
           
         case 'game_state_change':
-          set({ currentRound: data.round });
+          if (data.gameState) {
+            set(state => ({
+              currentRoom: state.currentRoom ? {
+                ...state.currentRoom,
+                gameState: data.gameState
+              } : null
+            }));
+          }
+          if (data.round) {
+            set({ currentRound: data.round });
+          }
+          break;
+          
+        case 'ball_drop':
+          set({ ballAnimating: true });
+          if (data.path && data.winningSlot) {
+            set(state => ({
+              currentRound: state.currentRound ? {
+                ...state.currentRound,
+                ballPath: data.path,
+                winningSlot: data.winningSlot
+              } : null
+            }));
+          }
+          // Auto-stop animation after path completes
+          setTimeout(() => {
+            set({ ballAnimating: false });
+          }, data.path ? data.path.length * 16 : 3000);
           break;
           
         case 'ball_result':

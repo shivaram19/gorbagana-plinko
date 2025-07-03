@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DollarSign, TrendingUp, Clock, Target } from 'lucide-react';
+import { DollarSign, TrendingUp, Clock, Target, TestTube } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
 
-const BET_AMOUNTS = [50, 100, 250, 500, 1000, 2500];
+const BET_AMOUNTS = [0, 50, 100, 250, 500, 1000, 2500]; // Added 0 for testing
 
 export const BettingPanel: React.FC = () => {
   const [customAmount, setCustomAmount] = useState('');
@@ -18,7 +18,7 @@ export const BettingPanel: React.FC = () => {
   } = useGameStore();
 
   const handlePlaceBet = () => {
-    if (selectedSlot && currentPlayer && betAmount > 0) {
+    if (selectedSlot && currentPlayer && betAmount >= 0) { // Allow 0 betting
       placeBet(selectedSlot, betAmount);
     }
   };
@@ -26,8 +26,8 @@ export const BettingPanel: React.FC = () => {
   const handleCustomAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/[^0-9]/g, '');
     setCustomAmount(value);
-    if (value) {
-      setBetAmount(parseInt(value));
+    if (value || value === '0') { // Allow 0 value
+      setBetAmount(parseInt(value) || 0);
     }
   };
 
@@ -40,7 +40,7 @@ export const BettingPanel: React.FC = () => {
   };
 
   const potentialWin = selectedSlot ? betAmount * getSlotMultiplier(selectedSlot) : 0;
-  const canPlaceBet = selectedSlot && betAmount > 0 && currentPlayer && !ballAnimating && 
+  const canPlaceBet = selectedSlot && betAmount >= 0 && currentPlayer && !ballAnimating && 
                      currentRoom?.gameState === 'BETTING';
 
   return (
@@ -51,12 +51,19 @@ export const BettingPanel: React.FC = () => {
           <Target className="w-5 h-5 mr-2 text-purple-400" />
           Place Your Bet
         </h3>
-        {currentRoom?.gameState === 'BETTING' && (
-          <div className="flex items-center text-sm text-yellow-400">
-            <Clock className="w-4 h-4 mr-1" />
-            Betting Open
+        <div className="flex items-center space-x-2">
+          {currentRoom?.gameState === 'BETTING' && (
+            <div className="flex items-center text-sm text-yellow-400">
+              <Clock className="w-4 h-4 mr-1" />
+              Betting Open
+            </div>
+          )}
+          {/* Testing Mode Indicator */}
+          <div className="flex items-center text-xs text-green-400 bg-green-400/10 px-2 py-1 rounded">
+            <TestTube className="w-3 h-3 mr-1" />
+            Test Mode
           </div>
-        )}
+        </div>
       </div>
 
       {/* Selected Slot Info */}
@@ -88,7 +95,10 @@ export const BettingPanel: React.FC = () => {
 
       {/* Bet Amount Selection */}
       <div className="mb-6">
-        <p className="text-sm text-gray-400 mb-3">Bet Amount (GOR)</p>
+        <p className="text-sm text-gray-400 mb-3">
+          Bet Amount (GOR) 
+          <span className="text-green-400 ml-2 text-xs">• Free testing enabled</span>
+        </p>
         
         {/* Quick Amount Buttons */}
         <div className="grid grid-cols-3 gap-2 mb-4">
@@ -99,14 +109,21 @@ export const BettingPanel: React.FC = () => {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               className={`
-                py-2 px-3 rounded-lg font-semibold text-sm transition-all duration-200
+                py-2 px-3 rounded-lg font-semibold text-sm transition-all duration-200 relative
                 ${betAmount === amount
                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
                   : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
                 }
               `}
             >
-              {amount}
+              {amount === 0 ? (
+                <span className="flex items-center justify-center">
+                  Free
+                  <TestTube className="w-3 h-3 ml-1" />
+                </span>
+              ) : (
+                amount
+              )}
             </motion.button>
           ))}
         </div>
@@ -117,7 +134,7 @@ export const BettingPanel: React.FC = () => {
             type="text"
             value={customAmount}
             onChange={handleCustomAmountChange}
-            placeholder="Custom amount..."
+            placeholder="Custom amount (0 for free)..."
             className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
           />
           <DollarSign className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -126,7 +143,7 @@ export const BettingPanel: React.FC = () => {
 
       {/* Potential Win Display */}
       <AnimatePresence>
-        {selectedSlot && betAmount > 0 && (
+        {selectedSlot && betAmount >= 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -136,11 +153,13 @@ export const BettingPanel: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <TrendingUp className="w-5 h-5 mr-2 text-green-400" />
-                <span className="text-sm text-gray-400">Potential Win</span>
+                <span className="text-sm text-gray-400">
+                  {betAmount === 0 ? 'Test Win' : 'Potential Win'}
+                </span>
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-green-400">
-                  {potentialWin.toLocaleString()} GOR
+                  {betAmount === 0 ? 'FREE' : `${potentialWin.toLocaleString()} GOR`}
                 </p>
                 <p className="text-sm text-gray-400">
                   ({betAmount} × {getSlotMultiplier(selectedSlot)})
@@ -172,7 +191,7 @@ export const BettingPanel: React.FC = () => {
            !currentPlayer ? 'Connect Wallet' :
            ballAnimating ? 'Ball in Play' :
            currentRoom?.gameState !== 'BETTING' ? 'Betting Closed' :
-           'Place Bet'}
+           betAmount === 0 ? 'Test Play' : 'Place Bet'}
         </span>
       </motion.button>
 
@@ -203,6 +222,17 @@ export const BettingPanel: React.FC = () => {
           </p>
         </motion.div>
       )}
+
+      {/* Testing Mode Notice */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="mt-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg"
+      >
+        <p className="text-xs text-green-400 text-center">
+          🧪 Testing Mode: Zero GOR betting enabled • Single player rooms allowed
+        </p>
+      </motion.div>
     </div>
   );
 };
