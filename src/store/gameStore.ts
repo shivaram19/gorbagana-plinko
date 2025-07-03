@@ -46,6 +46,12 @@ interface GameStore {
   setBetAmount: (amount: number) => void;
   setShowBetModal: (show: boolean) => void;
   
+  // Auto game flow actions
+  startBettingPhase: () => void;
+  startBallDrop: (winningSlot?: number) => Promise<void>;
+  showResults: (winningSlot: number) => void;
+  resetToWaiting: () => void;
+  
   // Chat actions
   sendChatMessage: (message: string) => void;
   addChatMessage: (message: ChatMessage) => void;
@@ -71,7 +77,7 @@ export const useGameStore = create<GameStore>()(
     chatMessages: [],
     typingUsers: new Set(),
     selectedSlot: null,
-    betAmount: 0.1, // Default GOR amount
+    betAmount: 0, // Default to free play
     showBetModal: false,
     
     // Authentication with signature verification
@@ -193,11 +199,11 @@ export const useGameStore = create<GameStore>()(
       set({ currentRoom: null, chatMessages: [] });
     },
     
-    // Updated placeBet with transaction signature
+    // Updated placeBet with automatic game flow
     placeBet: async (slotNumber: number, amount: number, transactionSignature?: string) => {
       try {
         // If we have a transaction signature, verify it first
-        if (transactionSignature && transactionSignature !== 'demo-transaction-signature') {
+        if (transactionSignature && transactionSignature !== 'demo-transaction-signature' && transactionSignature !== 'free-play-signature') {
           console.log('🔍 Verifying transaction:', transactionSignature);
           
           await betAPI.verify(
@@ -223,6 +229,35 @@ export const useGameStore = create<GameStore>()(
         });
         
         set({ showBetModal: false });
+        
+        // 🎮 START AUTOMATED GAME FLOW
+        console.log('🎮 Starting automated game flow...');
+        
+        // Step 1: Start betting phase immediately
+        get().startBettingPhase();
+        
+        // Step 2: Wait 1 second, then start ball drop
+        setTimeout(async () => {
+          // Generate random winning slot (or use selected slot 40% of the time for better UX)
+          const useSelectedSlot = Math.random() < 0.4; // 40% chance to win
+          const randomSlot = Math.floor(Math.random() * 15) + 1;
+          const finalWinningSlot = useSelectedSlot ? slotNumber : randomSlot;
+          
+          await get().startBallDrop(finalWinningSlot);
+        }, 1000);
+        
+        // Step 3: Wait 5 seconds for ball animation, then show results
+        setTimeout(() => {
+          const { currentRound } = get();
+          const winningSlot = currentRound?.winningSlot || slotNumber;
+          get().showResults(winningSlot);
+        }, 6000);
+        
+        // Step 4: Wait 3 seconds to show results, then reset
+        setTimeout(() => {
+          get().resetToWaiting();
+        }, 9000);
+        
       } catch (error) {
         console.error('Bet placement error:', error);
         throw error;
@@ -232,6 +267,202 @@ export const useGameStore = create<GameStore>()(
     setSelectedSlot: (slot: number | null) => set({ selectedSlot: slot }),
     setBetAmount: (amount: number) => set({ betAmount: amount }),
     setShowBetModal: (show: boolean) => set({ showBetModal: show }),
+    
+    // Automated Game Flow Functions
+    startBettingPhase: () => {
+      console.log('🔄 Phase 1: Starting BETTING phase');
+      const { currentRoom } = get();
+      if (currentRoom) {
+        const updatedRoom = { ...currentRoom, gameState: 'BETTING' as const };
+        set({ currentRoom: updatedRoom });
+        
+        // Show toast notification if available
+        if (typeof window !== 'undefined' && window.toast) {
+          window.toast.success('🎲 Betting phase started!');
+        }
+      }
+    },
+    
+    startBallDrop: async (winningSlot?: number) => {
+      console.log('🔄 Phase 2: Starting BALL_DROP phase');
+      const { currentRoom } = get();
+      if (currentRoom) {
+        const updatedRoom = { ...currentRoom, gameState: 'BALL_DROP' as const };
+        set({ currentRoom: updatedRoom, ballAnimating: true });
+        
+        // Simulate ball physics and animation
+        const finalWinningSlot = winningSlot || Math.floor(Math.random() * 15) + 1;
+        console.log('🎯 Ball dropping towards slot:', finalWinningSlot);
+        
+        // Show ball drop notification
+        if (typeof window !== 'undefined' && window.toast) {
+          window.toast.info(`🎯 Ball is dropping... targeting slot ${finalWinningSlot}!`);
+        }
+        
+        // Create realistic Plinko ball path with peg bouncing
+        const ballPath = [];
+        const startX = 400; // Center of board
+        const startY = 30;  // Top of board
+        
+        // Peg positions (triangular grid like real Plinko)
+        const pegRows = 12;
+        const pegsPerRow = [];
+        for (let row = 0; row < pegRows; row++) {
+          pegsPerRow[row] = row + 4; // 4, 5, 6, ... pegs per row
+        }
+        
+        // Calculate realistic ball bouncing path
+        let currentX = startX;
+        let currentY = startY;
+        let velocityX = 0;
+        const velocityY = 4; // Constant downward velocity
+        
+        // Ball will bounce left or right at each peg row
+        for (let row = 0; row < pegRows; row++) {
+          const rowY = 50 + row * 25; // Y position of this peg row
+          const numPegs = pegsPerRow[row];
+          const pegSpacing = 600 / (numPegs + 1);
+          
+          // Find which peg the ball hits in this row
+          const pegIndex = Math.floor((currentX - 100) / pegSpacing);
+          const pegX = 100 + (pegIndex + 1) * pegSpacing;
+          
+          // Ball bounces randomly left or right from peg
+          const bounceDirection = Math.random() < 0.5 ? -1 : 1;
+          const bounceAmount = 25 + Math.random() * 20; // More realistic bounce distance
+          
+          // Add smooth animation frames from current position to peg
+          const framesToPeg = 6;
+          for (let frame = 0; frame < framesToPeg; frame++) {
+            const progress = frame / framesToPeg;
+            
+            // Add slight gravity curve
+            const frameX = currentX + (pegX - currentX) * progress;
+            const frameY = currentY + (rowY - currentY) * progress;
+            
+            ballPath.push({
+              x: frameX,
+              y: frameY,
+              timestamp: Date.now() + ballPath.length * 70,
+              isPegHit: frame === framesToPeg - 1 // Mark peg hit for visual effects
+            });
+          }
+          
+          // Add bounce effect frames
+          const bounceFrames = 3;
+          for (let bounceFrame = 0; bounceFrame < bounceFrames; bounceFrame++) {
+            const bounceProgress = bounceFrame / bounceFrames;
+            const bounceX = pegX + bounceDirection * bounceAmount * bounceProgress;
+            const bounceY = rowY + Math.sin(bounceProgress * Math.PI) * 3; // Small vertical bounce
+            
+            ballPath.push({
+              x: bounceX,
+              y: bounceY,
+              timestamp: Date.now() + ballPath.length * 70
+            });
+          }
+          
+          // Update position after bounce
+          currentX = pegX + bounceDirection * bounceAmount;
+          currentY = rowY;
+          
+          // Keep ball within bounds with wall bounces
+          if (currentX < 120) {
+            currentX = 120;
+          } else if (currentX > 680) {
+            currentX = 680;
+          }
+        }
+        
+        // Final fall to target slot with some influence toward winning slot
+        const slotWidth = 600 / 15;
+        const targetSlotX = 100 + (finalWinningSlot - 1) * slotWidth + (slotWidth / 2);
+        
+        // Gradually guide ball toward target slot
+        const finalFrames = 20;
+        for (let frame = 0; frame < finalFrames; frame++) {
+          const progress = frame / finalFrames;
+          const influence = 0.6; // How much to influence toward target (60%)
+          
+          const naturalX = currentX;
+          const targetInfluence = targetSlotX * influence;
+          const frameX = naturalX * (1 - progress * influence) + targetInfluence * progress;
+          
+          // Add gravity acceleration for final drop
+          const gravity = 1 + progress * 2; // Accelerating fall
+          const frameY = currentY + (380 - currentY) * progress * gravity;
+          
+          ballPath.push({
+            x: frameX,
+            y: frameY,
+            timestamp: Date.now() + ballPath.length * 70,
+            isSlotHit: frame === finalFrames - 1 // Mark slot hit
+          });
+        }
+        
+        // Update current round with ball path and winning slot
+        set({
+          currentRound: {
+            id: 'demo-round',
+            roomId: currentRoom.id,
+            roundNumber: 1,
+            ballPath,
+            winningSlot: finalWinningSlot,
+            startTime: new Date(),
+            bets: []
+          }
+        });
+      }
+    },
+    
+    showResults: (winningSlot: number) => {
+      console.log('🔄 Phase 3: Showing RESULTS phase');
+      const { currentRoom, selectedSlot, betAmount } = get();
+      if (currentRoom) {
+        const updatedRoom = { ...currentRoom, gameState: 'RESULTS' as const };
+        set({ currentRoom: updatedRoom, ballAnimating: false });
+        
+        // Calculate winnings
+        const isWinner = selectedSlot === winningSlot;
+        const multipliers: { [key: number]: number } = {
+          1: 8, 2: 3, 3: 2, 4: 1.5, 5: 1.2, 6: 1.1, 7: 1, 8: 5,
+          9: 1, 10: 1.1, 11: 1.2, 12: 1.5, 13: 2, 14: 3, 15: 8
+        };
+        
+        const multiplier = multipliers[winningSlot] || 1;
+        const winnings = isWinner ? betAmount * multiplier : 0;
+        
+        console.log(`🎲 GAME RESULTS:`);
+        console.log(`   Selected Slot: ${selectedSlot}`);
+        console.log(`   Winning Slot: ${winningSlot}`);
+        console.log(`   Bet Amount: ${betAmount} GOR`);
+        console.log(`   ${isWinner ? '🏆 WINNER!' : '😭 LOSE'} Winnings: ${winnings} GOR`);
+        
+        // Show results notification
+        if (typeof window !== 'undefined' && window.toast) {
+          if (isWinner) {
+            window.toast.success(`🏆 WINNER! Slot ${winningSlot} hit! You won ${winnings} GOR!`);
+          } else {
+            window.toast.error(`😭 No luck this time. Winning slot was ${winningSlot}.`);
+          }
+        }
+      }
+    },
+    
+    resetToWaiting: () => {
+      console.log('🔄 Phase 4: Resetting to WAITING phase');
+      const { currentRoom } = get();
+      if (currentRoom) {
+        const updatedRoom = { ...currentRoom, gameState: 'WAITING' as const };
+        set({ 
+          currentRoom: updatedRoom, 
+          ballAnimating: false,
+          currentRound: null,
+          selectedSlot: null 
+        });
+        console.log('✅ Game cycle complete! Ready for next bet.');
+      }
+    },
     
     // Chat actions
     sendChatMessage: (message: string) => {
@@ -275,7 +506,36 @@ export const useGameStore = create<GameStore>()(
           break;
           
         case 'game_state_change':
-          set({ currentRound: data.round });
+          // Update current round if provided
+          if (data.round) {
+            set({ currentRound: data.round });
+          }
+          
+          // Update room game state if provided
+          if (data.gameState) {
+            const { currentRoom } = get();
+            if (currentRoom) {
+              const updatedRoom = {
+                ...currentRoom,
+                gameState: data.gameState
+              };
+              set({ currentRoom: updatedRoom });
+              console.log('🎮 Game state updated to:', data.gameState);
+            }
+          }
+          
+          // Handle winning slot for results
+          if (data.winningSlot) {
+            const { currentRound } = get();
+            if (currentRound) {
+              set({ 
+                currentRound: { 
+                  ...currentRound, 
+                  winningSlot: data.winningSlot 
+                } 
+              });
+            }
+          }
           break;
           
         case 'ball_result':

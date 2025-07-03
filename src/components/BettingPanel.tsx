@@ -5,7 +5,7 @@ import { useGameStore } from '../store/gameStore';
 import { useGorbaganaWallet } from '../hooks/useGorbaganaWallet';
 import toast from 'react-hot-toast';
 
-const BET_AMOUNTS = [0.1, 0.5, 1, 2.5, 5, 10]; // GOR amounts
+const BET_AMOUNTS = [0, 0.1, 0.5, 1, 2.5, 5, 10]; // GOR amounts - now includes 0 for free play
 
 export const BettingPanel: React.FC = () => {
   const [customAmount, setCustomAmount] = useState('');
@@ -24,9 +24,10 @@ export const BettingPanel: React.FC = () => {
   const { balance, sendGOR } = useGorbaganaWallet();
 
   const handlePlaceBet = async () => {
-    if (!selectedSlot || !currentPlayer || betAmount <= 0) return;
+    if (!selectedSlot || !currentPlayer) return;
     
-    if (betAmount > balance) {
+    // Allow 0 amount bets for free play - only check balance if amount > 0
+    if (betAmount > 0 && betAmount > balance) {
       toast.error('Insufficient GOR balance');
       return;
     }
@@ -34,18 +35,25 @@ export const BettingPanel: React.FC = () => {
     setIsPlacingBet(true);
     
     try {
-      // Send GOR to house wallet
-      const houseWallet = import.meta.env.VITE_HOUSE_WALLET || 'YourHouseWalletOnGorbaganaTestnet';
-      
-      if (houseWallet === 'YourHouseWalletOnGorbaganaTestnet') {
-        // For demo purposes - skip actual transaction
-        console.log(`Demo: Would send ${betAmount} GOR to house wallet for slot ${selectedSlot}`);
-        await placeBet(selectedSlot, betAmount, 'demo-transaction-signature');
-        toast.success('Demo bet placed successfully!');
+      // Free play mode for 0 amount bets
+      if (betAmount === 0) {
+        console.log(`Free play bet on slot ${selectedSlot}`);
+        await placeBet(selectedSlot, betAmount, 'free-play-signature');
+        toast.success('Free play bet placed! No GOR required.');
       } else {
-        const signature = await sendGOR(houseWallet, betAmount);
-        await placeBet(selectedSlot, betAmount, signature);
-        toast.success('Bet placed successfully!');
+        // Regular paid bets
+        const houseWallet = import.meta.env.VITE_HOUSE_WALLET || 'YourHouseWalletOnGorbaganaTestnet';
+        
+        if (houseWallet === 'YourHouseWalletOnGorbaganaTestnet') {
+          // For demo purposes - skip actual transaction
+          console.log(`Demo: Would send ${betAmount} GOR to house wallet for slot ${selectedSlot}`);
+          await placeBet(selectedSlot, betAmount, 'demo-transaction-signature');
+          toast.success('Demo bet placed successfully!');
+        } else {
+          const signature = await sendGOR(houseWallet, betAmount);
+          await placeBet(selectedSlot, betAmount, signature);
+          toast.success('Bet placed successfully!');
+        }
       }
     } catch (error) {
       console.error('Bet placement error:', error);
@@ -58,8 +66,15 @@ export const BettingPanel: React.FC = () => {
   const handleCustomAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/[^0-9.]/g, '');
     setCustomAmount(value);
-    if (value) {
-      setBetAmount(parseFloat(value));
+    if (value !== '') {
+      const amount = parseFloat(value);
+      // Allow 0 or positive numbers
+      if (!isNaN(amount) && amount >= 0) {
+        setBetAmount(amount);
+      }
+    } else {
+      // If input is empty, default to 0 for free play
+      setBetAmount(0);
     }
   };
 
@@ -71,9 +86,10 @@ export const BettingPanel: React.FC = () => {
     return multipliers[slotId] || 1;
   };
 
-  const potentialWin = selectedSlot ? betAmount * getSlotMultiplier(selectedSlot) : 0;
-  const canPlaceBet = selectedSlot && betAmount > 0 && currentPlayer && !ballAnimating && 
-                     currentRoom?.gameState === 'BETTING' && !isPlacingBet && betAmount <= balance;
+  const potentialWin = selectedSlot && betAmount > 0 ? betAmount * getSlotMultiplier(selectedSlot) : 0;
+  const canPlaceBet = selectedSlot && currentPlayer && !ballAnimating && 
+                     currentRoom?.gameState === 'BETTING' && !isPlacingBet && 
+                     (betAmount === 0 || betAmount <= balance); // Allow 0 bets or sufficient balance
 
   return (
     <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-6 border border-slate-700 shadow-xl">
@@ -143,13 +159,15 @@ export const BettingPanel: React.FC = () => {
                 py-2 px-3 rounded-lg font-semibold text-sm transition-all duration-200
                 ${betAmount === amount
                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                  : amount <= balance
-                    ? 'bg-slate-700 text-gray-300 hover:bg-slate-600'
-                    : 'bg-slate-800 text-gray-500 cursor-not-allowed'
+                  : amount === 0
+                    ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-500 hover:to-emerald-500'
+                    : amount <= balance
+                      ? 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                      : 'bg-slate-800 text-gray-500 cursor-not-allowed'
                 }
               `}
             >
-              {amount}
+              {amount === 0 ? 'FREE' : amount}
             </motion.button>
           ))}
         </div>
@@ -160,17 +178,25 @@ export const BettingPanel: React.FC = () => {
             type="text"
             value={customAmount}
             onChange={handleCustomAmountChange}
-            placeholder="Custom amount..."
+            placeholder="Enter amount (0 for free play)..."
             className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
           />
           <DollarSign className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
         </div>
         
         {/* Balance Warning */}
-        {betAmount > balance && (
+        {betAmount > 0 && betAmount > balance && (
           <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded flex items-center">
             <AlertCircle className="w-4 h-4 text-red-400 mr-2" />
             <span className="text-red-400 text-sm">Insufficient balance</span>
+          </div>
+        )}
+        
+        {/* Free Play Info */}
+        {betAmount === 0 && (
+          <div className="mt-2 p-2 bg-green-500/10 border border-green-500/20 rounded flex items-center">
+            <AlertCircle className="w-4 h-4 text-green-400 mr-2" />
+            <span className="text-green-400 text-sm">Free play mode - no GOR required!</span>
           </div>
         )}
       </div>
@@ -232,9 +258,10 @@ export const BettingPanel: React.FC = () => {
             <span>
               {!selectedSlot ? 'Select a Slot' : 
                !currentPlayer ? 'Connect Wallet' :
-               betAmount > balance ? 'Insufficient Balance' :
+               betAmount > 0 && betAmount > balance ? 'Insufficient Balance' :
                ballAnimating ? 'Ball in Play' :
                currentRoom?.gameState !== 'BETTING' ? 'Betting Closed' :
+               betAmount === 0 ? 'Place Free Bet' :
                'Place Bet'}
             </span>
           </>

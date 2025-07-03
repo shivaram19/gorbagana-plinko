@@ -147,7 +147,14 @@ app.post('/api/bets/verify', async (req, res) => {
   try {
     const { transactionSignature, walletAddress, amount, slotNumber } = req.body;
     
-    // Verify the transaction on Gorbagana blockchain
+    // Allow free play bets (amount = 0) without blockchain verification
+    if (amount === 0 || transactionSignature === 'free-play-signature') {
+      console.log(`Free play bet: ${walletAddress} on slot ${slotNumber}`);
+      res.json({ success: true, verified: true, isFreePlay: true });
+      return;
+    }
+    
+    // Verify paid bets on Gorbagana blockchain
     const isValid = await txVerifier.verifyBetTransaction(
       transactionSignature,
       walletAddress,
@@ -159,9 +166,9 @@ app.post('/api/bets/verify', async (req, res) => {
     }
 
     // Store bet in database (simplified for demo)
-    console.log(`Verified bet: ${walletAddress} bet ${amount} GOR on slot ${slotNumber}`);
+    console.log(`Verified paid bet: ${walletAddress} bet ${amount} GOR on slot ${slotNumber}`);
     
-    res.json({ success: true, verified: true });
+    res.json({ success: true, verified: true, isFreePlay: false });
   } catch (error) {
     console.error('Bet verification error:', error);
     res.status(500).json({ error: 'Bet verification failed' });
@@ -273,8 +280,11 @@ async function handleWebSocketMessage(
 
     case 'bet_placed':
       try {
-        // Verify the transaction before processing the bet (skip for demo)
-        if (data.transactionSignature !== 'demo-transaction-signature') {
+        // Allow free play bets (amount = 0) without transaction verification
+        if (data.amount === 0 || data.transactionSignature === 'free-play-signature') {
+          console.log(`Free play bet placed by ${walletAddress}: slot ${data.slotNumber}`);
+        } else if (data.transactionSignature !== 'demo-transaction-signature') {
+          // Verify the transaction for paid bets
           const isValid = await txVerifier.verifyBetTransaction(
             data.transactionSignature,
             walletAddress,
@@ -292,8 +302,9 @@ async function handleWebSocketMessage(
           }
         }
 
-        // Process the bet
-        console.log(`Verified bet placed by ${walletAddress}: ${data.amount} GOR on slot ${data.slotNumber}`);
+        // Process the bet (both free and paid)
+        const betType = data.amount === 0 ? 'free play' : `${data.amount} GOR`;
+        console.log(`Verified bet placed by ${walletAddress}: ${betType} on slot ${data.slotNumber}`);
         
         // Send confirmation back to client
         const confirmationData = serializeResponse({
@@ -301,7 +312,8 @@ async function handleWebSocketMessage(
           data: { 
             slotNumber: data.slotNumber, 
             amount: data.amount, 
-            signature: data.transactionSignature 
+            signature: data.transactionSignature,
+            isFreePlay: data.amount === 0
           },
           timestamp: Date.now()
         });
