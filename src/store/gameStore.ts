@@ -29,6 +29,9 @@ interface GameStore {
   betAmount: number;
   showBetModal: boolean;
   
+  // Testing mode state
+  testingMode: boolean;
+  
   // Actions
   connect: (walletAddress: string) => void;
   disconnect: () => void;
@@ -82,6 +85,7 @@ export const useGameStore = create<GameStore>()(
     selectedSlot: null,
     betAmount: 0, // Default to free play
     showBetModal: false,
+    testingMode: true, // Enable testing mode
     
     // Authentication with signature verification
     authenticate: async (walletAddress: string, signature: string) => {
@@ -130,6 +134,7 @@ export const useGameStore = create<GameStore>()(
       
       ws.onopen = () => {
         set({ isConnected: true, connectionError: null, ws });
+        console.log('🧪 Connected in testing mode - Zero betting enabled');
       };
       
       ws.onclose = () => {
@@ -270,7 +275,7 @@ export const useGameStore = create<GameStore>()(
     },
     
     setSelectedSlot: (slot: number | null) => set({ selectedSlot: slot }),
-    setBetAmount: (amount: number) => set({ betAmount: amount }),
+    setBetAmount: (amount: number) => set({ betAmount: Math.max(0, amount) }), // Allow 0
     setShowBetModal: (show: boolean) => set({ showBetModal: show }),
     
     // ORIGINAL PLINKOO STYLE - Simple reset after ball lands

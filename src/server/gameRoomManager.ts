@@ -76,9 +76,11 @@ export class GameRoomManager {
           throw new Error('Room not found or inactive');
         }
 
-        if (!isSpectator && room._count.players >= room.maxPlayers) {
-          throw new Error('Room is full');
-        }
+        // TESTING MODE: Remove player limit check to allow unlimited players
+        // This allows for testing with any number of players
+        // if (!isSpectator && room._count.players >= room.maxPlayers) {
+        //   throw new Error('Room is full');
+        // }
 
         // Update or create player
         const player = await tx.player.upsert({
@@ -179,6 +181,25 @@ export class GameRoomManager {
         roomId,
         roundNumber: await this.getNextRoundNumber(roomId)
       }
+    });
+  }
+
+  // TESTING MODE: Allow single player games
+  async canStartGame(roomId: string): Promise<boolean> {
+    const room = await prisma.room.findUnique({
+      where: { id: roomId },
+      include: { _count: { select: { players: true } } }
+    });
+
+    // In testing mode, allow games to start with just 1 player
+    return room ? room._count.players >= 1 : false;
+  }
+
+  // TESTING MODE: Modified game state management for single players
+  async updateGameState(roomId: string, gameState: string) {
+    return await prisma.room.update({
+      where: { id: roomId },
+      data: { gameState: gameState as any }
     });
   }
 

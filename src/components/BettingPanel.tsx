@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+
 import { DollarSign, TrendingUp, Clock, Target, AlertCircle } from 'lucide-react';
+
 import { useGameStore } from '../store/gameStore';
 import { useGorbaganaWallet } from '../hooks/useGorbaganaWallet';
 import toast from 'react-hot-toast';
+
 
 const BET_AMOUNTS = [0, 0.1, 0.5, 1, 2.5, 5, 10]; // GOR amounts - now includes 0 for free play
 
@@ -99,12 +102,19 @@ export const BettingPanel: React.FC = () => {
           <Target className="w-5 h-5 mr-2 text-purple-400" />
           Place Your Bet
         </h3>
-        {currentRoom?.gameState === 'BETTING' && (
-          <div className="flex items-center text-sm text-yellow-400">
-            <Clock className="w-4 h-4 mr-1" />
-            Betting Open
+        <div className="flex items-center space-x-2">
+          {currentRoom?.gameState === 'BETTING' && (
+            <div className="flex items-center text-sm text-yellow-400">
+              <Clock className="w-4 h-4 mr-1" />
+              Betting Open
+            </div>
+          )}
+          {/* Testing Mode Indicator */}
+          <div className="flex items-center text-xs text-green-400 bg-green-400/10 px-2 py-1 rounded">
+            <TestTube className="w-3 h-3 mr-1" />
+            Test Mode
           </div>
-        )}
+        </div>
       </div>
 
       {/* Balance Display */}
@@ -144,7 +154,10 @@ export const BettingPanel: React.FC = () => {
 
       {/* Bet Amount Selection */}
       <div className="mb-6">
-        <p className="text-sm text-gray-400 mb-3">Bet Amount (GOR)</p>
+        <p className="text-sm text-gray-400 mb-3">
+          Bet Amount (GOR) 
+          <span className="text-green-400 ml-2 text-xs">• Free testing enabled</span>
+        </p>
         
         {/* Quick Amount Buttons */}
         <div className="grid grid-cols-3 gap-2 mb-4">
@@ -156,7 +169,7 @@ export const BettingPanel: React.FC = () => {
               whileHover={{ scale: amount <= balance ? 1.02 : 1 }}
               whileTap={{ scale: amount <= balance ? 0.98 : 1 }}
               className={`
-                py-2 px-3 rounded-lg font-semibold text-sm transition-all duration-200
+                py-2 px-3 rounded-lg font-semibold text-sm transition-all duration-200 relative
                 ${betAmount === amount
                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
                   : amount === 0
@@ -213,7 +226,9 @@ export const BettingPanel: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <TrendingUp className="w-5 h-5 mr-2 text-green-400" />
-                <span className="text-sm text-gray-400">Potential Win</span>
+                <span className="text-sm text-gray-400">
+                  {betAmount === 0 ? 'Test Win' : 'Potential Win'}
+                </span>
               </div>
               <div className="text-right">
                 <p className="text-2xl font-bold text-green-400">
@@ -295,6 +310,17 @@ export const BettingPanel: React.FC = () => {
           </p>
         </motion.div>
       )}
+
+      {/* Testing Mode Notice */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="mt-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg"
+      >
+        <p className="text-xs text-green-400 text-center">
+          🧪 Testing Mode: Zero GOR betting enabled • Single player rooms allowed
+        </p>
+      </motion.div>
     </div>
   );
 };

@@ -298,6 +298,24 @@ async function handleWebSocketMessage(
             data.roomId, 
             `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)} joined the room`
           );
+
+          // TESTING MODE: Auto-start betting phase for single player
+          if (room.playerCount >= 1 && room.gameState === 'WAITING') {
+            setTimeout(async () => {
+              await gameRoomManager.updateGameState(data.roomId, 'BETTING');
+              await chatManager.handleSystemMessage(
+                data.roomId, 
+                '🎮 Betting phase started! Place your bets.'
+              );
+              
+              // Broadcast game state change
+              broadcastToRoom(data.roomId, {
+                type: 'game_state_change',
+                data: { gameState: 'BETTING' },
+                timestamp: Date.now()
+              });
+            }, 2000); // 2 second delay
+          }
         }
       } else if (data.action === 'leave') {
         await gameRoomManager.leaveRoom(data.roomId, walletAddress);
@@ -371,6 +389,101 @@ async function handleWebSocketMessage(
   }
 }
 
+// Helper function to get slot multiplier
+function getSlotMultiplier(slotNumber: number): number {
+  const multipliers: { [key: number]: number } = {
+    1: 8, 2: 3, 3: 2, 4: 1.5, 5: 1.2, 6: 1.1, 7: 1, 8: 5,
+    9: 1, 10: 1.1, 11: 1.2, 12: 1.5, 13: 2, 14: 3, 15: 8
+  };
+  return multipliers[slotNumber] || 1;
+}
+
+// TESTING MODE: Auto ball drop function
+async function triggerBallDrop(roomId: string, roundId: string) {
+  try {
+    // Update game state to ball drop
+    await gameRoomManager.updateGameState(roomId, 'BALL_DROP');
+    
+    // Generate ball physics
+    const { path, winningSlot } = physicsEngine.generateBallPath(`test-${Date.now()}`);
+    
+    // Update round with results
+    await prisma.gameRound.update({
+      where: { id: roundId },
+      data: {
+        winningSlot,
+        ballPath: path,
+        endTime: new Date()
+      }
+    });
+
+    // Broadcast ball drop
+    broadcastToRoom(roomId, {
+      type: 'ball_drop',
+      data: { path, winningSlot },
+      timestamp: Date.now()
+    });
+
+    // Calculate winnings and update bets
+    const bets = await prisma.bet.findMany({
+      where: { roundId },
+      include: { player: true }
+    });
+
+    for (const bet of bets) {
+      const isWinner = bet.slotNumber === winningSlot;
+      const payout = isWinner ? bet.amount * bet.multiplier : 0;
+
+      await prisma.bet.update({
+        where: { id: bet.id },
+        data: { isWinner, payout }
+      });
+
+      if (isWinner) {
+        // Update player stats (even for 0 amount wins)
+        await prisma.player.update({
+          where: { id: bet.playerId },
+          data: {
+            totalGames: { increment: 1 },
+            totalWinnings: { increment: Math.floor(payout) }
+          }
+        });
+      }
+    }
+
+    // Show results
+    setTimeout(async () => {
+      await gameRoomManager.updateGameState(roomId, 'RESULTS');
+      await chatManager.handleSystemMessage(
+        roomId,
+        `🎯 Ball landed in slot ${winningSlot}! ${bets.filter(b => b.slotNumber === winningSlot).length} winner(s)!`
+      );
+
+      // Reset to waiting after results
+      setTimeout(async () => {
+        await gameRoomManager.updateGameState(roomId, 'WAITING');
+        broadcastToRoom(roomId, {
+          type: 'game_state_change',
+          data: { gameState: 'WAITING' },
+          timestamp: Date.now()
+        });
+      }, 3000);
+    }, 5000); // Show results for 5 seconds
+
+  } catch (error) {
+    console.error('Error in ball drop:', error);
+  }
+}
+
+// Broadcast helper function
+function broadcastToRoom(roomId: string, message: any) {
+  wss.clients.forEach((client) => {
+    if (client.readyState === 1) { // WebSocket.OPEN
+      client.send(JSON.stringify(message));
+    }
+  });
+}
+
 // REST API endpoints
 app.get('/api/rooms', async (_req, res) => {
   try {
@@ -427,6 +540,7 @@ const PORT = process.env.VITE_SERVER_PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 WebSocket server ready`);
+  console.log(`🧪 TESTING MODE: Zero betting & single player enabled`);
   console.log(`🎮 Gorbagana Plinko Wars backend started`);
   console.log(`⛓️ Gorbagana Testnet integration enabled`);
   console.log(`📡 Broadcasting enabled for room updates`);
