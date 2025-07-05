@@ -1,15 +1,76 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, Trophy, Clock, Play, TestTube } from 'lucide-react';
+import { Users, Trophy, Clock, Play, Plus } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
+import { CreateRoomModal } from './CreateRoomModal';
 import { Room } from '../types/game';
+import toast from 'react-hot-toast';
 
 export const RoomList: React.FC = () => {
-  const { rooms, joinRoom, currentPlayer } = useGameStore();
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const { rooms, joinRoom, currentPlayer, refreshRooms } = useGameStore();
+
+  // 🔧 FIXED: Refresh rooms when component mounts and when connected
+  useEffect(() => {
+    if (currentPlayer) {
+      refreshRooms();
+    }
+  }, [currentPlayer, refreshRooms]);
 
   const handleJoinRoom = (roomId: string) => {
     if (currentPlayer) {
       joinRoom(roomId);
+    }
+  };
+
+  const handleCreateRoom = async (roomData: { name: string; maxPlayers: number; entryFee: number }) => {
+    setIsCreating(true);
+    
+    try {
+      // Get the server URL dynamically
+      const hostname = window.location.hostname;
+      const serverPort = import.meta.env.VITE_SERVER_PORT || '3001';
+      let wsHostname = hostname;
+      
+      if (hostname.includes('--5173--')) {
+        wsHostname = hostname.replace('--5173--', `--${serverPort}--`);
+      }
+      
+      const serverUrl = `http://${wsHostname}:${serverPort}`;
+      
+      console.log('🏠 Creating room with data:', roomData);
+      console.log('📡 Using server URL:', serverUrl);
+      
+      const response = await fetch(`${serverUrl}/api/rooms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(roomData),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create room: ${response.statusText}`);
+      }
+
+      const newRoom = await response.json();
+      
+      console.log('✅ Room created successfully:', newRoom);
+      toast.success(`Room "${roomData.name}" created successfully!`);
+      setShowCreateModal(false);
+      
+      // 🔧 FIXED: The server now broadcasts to all clients, but also refresh locally to ensure sync
+      setTimeout(() => {
+        refreshRooms();
+        console.log('🔄 Refreshed rooms after creation');
+      }, 500); // Small delay to ensure server broadcast is processed
+      
+    } catch (error) {
+      console.error('Error creating room:', error);
+      toast.error('Failed to create room. Please try again.');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -46,20 +107,63 @@ export const RoomList: React.FC = () => {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8 text-center"
+        className="mb-8"
       >
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
-          Gorbagana Plinko Wars
-        </h1>
-        <p className="text-gray-400 text-lg">
-          Join a room and start your Plinko adventure
-        </p>
-        <div className="flex items-center justify-center mt-4 text-green-400 bg-green-400/10 px-4 py-2 rounded-lg inline-flex">
-          <TestTube className="w-4 h-4 mr-2" />
-          <span className="text-sm font-semibold">Testing Mode: Free Play & Single Player Enabled</span>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
+              Game Rooms
+            </h1>
+            <p className="text-gray-400 text-lg">
+              Join a room or create your own to start playing • {rooms.length} active rooms
+            </p>
+          </div>
+          
+          {/* Create Room Button */}
+          <motion.button
+            onClick={() => setShowCreateModal(true)}
+            disabled={isCreating}
+            whileHover={{ scale: isCreating ? 1 : 1.02 }}
+            whileTap={{ scale: isCreating ? 1 : 0.98 }}
+            className={`
+              px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 
+              flex items-center space-x-2
+              ${isCreating 
+                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500'
+              }
+            `}
+          >
+            {isCreating ? (
+              <>
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+                />
+                <span>Creating...</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-5 h-5" />
+                <span>Create Room</span>
+              </>
+            )}
+          </motion.button>
         </div>
       </motion.div>
 
+      {/* Debug/Manual Refresh Button */}
+      <div className="mb-4 flex justify-end">
+        <button
+          onClick={refreshRooms}
+          className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors"
+        >
+          🔄 Refresh Rooms
+        </button>
+      </div>
+
+      {/* Rooms Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {rooms.map((room, index) => (
           <motion.div
@@ -194,6 +298,7 @@ export const RoomList: React.FC = () => {
         ))}
       </div>
 
+      {/* Empty State */}
       {rooms.length === 0 && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -204,11 +309,49 @@ export const RoomList: React.FC = () => {
             <Users className="w-12 h-12 text-white" />
           </div>
           <h3 className="text-xl font-semibold text-white mb-2">No Active Rooms</h3>
-          <p className="text-gray-400">
+          <p className="text-gray-400 mb-6">
             Be the first to create a room and start playing!
           </p>
+          <motion.button
+            onClick={() => setShowCreateModal(true)}
+            disabled={isCreating}
+            whileHover={{ scale: isCreating ? 1 : 1.02 }}
+            whileTap={{ scale: isCreating ? 1 : 0.98 }}
+            className={`
+              px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200 
+              flex items-center space-x-2 mx-auto
+              ${isCreating 
+                ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500'
+              }
+            `}
+          >
+            {isCreating ? (
+              <>
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
+                />
+                <span>Creating...</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-5 h-5" />
+                <span>Create First Room</span>
+              </>
+            )}
+          </motion.button>
         </motion.div>
       )}
+
+      {/* Create Room Modal */}
+      <CreateRoomModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreateRoom={handleCreateRoom}
+        isCreating={isCreating}
+      />
     </div>
   );
 };
