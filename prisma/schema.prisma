@@ -4,9 +4,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-  schemas  = ["game", "chat"]
 }
 
 model Room {
@@ -16,7 +15,7 @@ model Room {
   entryFee      Int         // GOR tokens in smallest unit
   isActive      Boolean     @default(true)
   currentRound  Int         @default(0)
-  gameState     GameState   @default(WAITING)
+  gameState     String      @default("WAITING") // WAITING, BETTING, BALL_DROP, RESULTS, FINISHED
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
   
@@ -26,7 +25,6 @@ model Room {
   gameRounds    GameRound[]
   
   @@map("rooms")
-  @@schema("game")
 }
 
 model Player {
@@ -50,10 +48,9 @@ model Player {
   // Stats
   totalGames            Int      @default(0)
   totalWinnings         BigInt   @default(0) // Use BigInt for large GOR amounts
-  favoriteSlots         Json?    // Store preferred slot numbers
+  favoriteSlots         String?  // Store preferred slot numbers as comma-separated string
   
   @@map("players")
-  @@schema("game")
 }
 
 model ChatMessage {
@@ -62,14 +59,13 @@ model ChatMessage {
   playerId  String
   message   String
   timestamp DateTime    @default(now())
-  type      MessageType @default(CHAT)
+  type          String      @default("CHAT") // CHAT, SYSTEM, BET_PLACED, GAME_EVENT
   
   // Relations
   room      Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
   player    Player @relation("SentMessages", fields: [playerId], references: [id])
   
   @@map("chat_messages")
-  @@schema("chat")
 }
 
 model GameRound {
@@ -78,7 +74,7 @@ model GameRound {
   roundNumber   Int
   randomSeed    String?  // From blockchain or verifiable random
   winningSlot   Int?     // 1-15
-  ballPath      Json?    // Store physics simulation data
+  ballPath      String?  // Store physics simulation data as JSON string
   startTime     DateTime @default(now())
   endTime       DateTime?
   
@@ -88,7 +84,6 @@ model GameRound {
   
   @@unique([roomId, roundNumber])
   @@map("game_rounds")
-  @@schema("game")
 }
 
 model Bet {
@@ -112,24 +107,5 @@ model Bet {
   round                 GameRound? @relation(fields: [roundId], references: [id], onDelete: Cascade)
   
   @@map("bets")
-  @@schema("game")
 }
 
-enum GameState {
-  WAITING
-  BETTING
-  BALL_DROP
-  RESULTS
-  FINISHED
-
-  @@schema("game")
-}
-
-enum MessageType {
-  CHAT
-  SYSTEM
-  BET_PLACED
-  GAME_EVENT
-
-  @@schema("chat")
-}

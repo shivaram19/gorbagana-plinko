@@ -56,10 +56,31 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
+// Keep track of connected clients for broadcasting
+const connectedClients = new Set<any>();
+
 // Initialize managers
 const gameRoomManager = new GameRoomManager();
 const chatManager = new ChatManager(wss);
 const txVerifier = new GorbaganaTransactionVerifier();
+
+// Helper function to broadcast to all connected clients
+async function broadcastToAllClients(message: any) {
+  const rooms = await gameRoomManager.getActiveRooms();
+  const broadcastData = serializeResponse({
+    type: 'room_update',
+    data: { rooms },
+    timestamp: Date.now()
+  });
+  
+  connectedClients.forEach((client) => {
+    if (client.readyState === 1) { // WebSocket.OPEN
+      client.send(customStringify(broadcastData));
+    }
+  });
+  
+  console.log(`📡 Broadcasted room update to ${connectedClients.size} clients`);
+}
 
 // Middleware
 app.use(helmet());
@@ -205,6 +226,9 @@ wss.on('connection', async (ws, req) => {
 
   console.log(`Player connected: ${finalWalletAddress}`);
   
+  // Add client to connected clients set
+  connectedClients.add(ws);
+  
   // Create or update player
   const player = await gameRoomManager.createOrUpdatePlayer(finalWalletAddress);
   
@@ -235,7 +259,14 @@ wss.on('connection', async (ws, req) => {
 
   ws.on('close', async () => {
     console.log(`Player disconnected: ${finalWalletAddress}`);
+    // Remove client from connected clients set
+    connectedClients.delete(ws);
     await gameRoomManager.handlePlayerDisconnect(finalWalletAddress);
+  });
+
+  ws.on('error', (error) => {
+    console.error(`WebSocket error for ${finalWalletAddress}:`, error);
+    connectedClients.delete(ws);
   });
 });
 
@@ -253,11 +284,14 @@ async function handleWebSocketMessage(
         const room = await gameRoomManager.joinRoom(data.roomId, walletAddress);
         if (room) {
           const roomData = serializeResponse({
-          type: 'room_update',
-          data: { room },
-          timestamp: Date.now()
+            type: 'room_update',
+            data: { room },
+            timestamp: Date.now()
           });
-        ws.send(customStringify(roomData));
+          ws.send(customStringify(roomData));
+          
+          // Broadcast updated room list to all clients
+          await broadcastToAllClients({ type: 'room_list_update' });
           
           // Notify other players
           await chatManager.handleSystemMessage(
@@ -267,6 +301,8 @@ async function handleWebSocketMessage(
         }
       } else if (data.action === 'leave') {
         await gameRoomManager.leaveRoom(data.roomId, walletAddress);
+        // Broadcast updated room list to all clients
+        await broadcastToAllClients({ type: 'room_list_update' });
       }
       break;
 
@@ -347,11 +383,19 @@ app.get('/api/rooms', async (_req, res) => {
   }
 });
 
+// 🔧 FIXED: Room creation now broadcasts to all clients
 app.post('/api/rooms', async (req, res) => {
   try {
+    console.log('🏠 Creating new room:', req.body);
     const { name, maxPlayers, entryFee } = req.body;
     const room = await gameRoomManager.createRoom(name, maxPlayers, entryFee);
     const serializedRoom = serializeResponse(room);
+    
+    console.log('✅ Room created successfully:', serializedRoom);
+    
+    // 🚀 BROADCAST UPDATE TO ALL CONNECTED CLIENTS
+    await broadcastToAllClients({ type: 'new_room_created' });
+    
     res.json(serializedRoom);
   } catch (error) {
     console.error('Error creating room:', error);
@@ -385,6 +429,7 @@ server.listen(PORT, () => {
   console.log(`📊 WebSocket server ready`);
   console.log(`🎮 Gorbagana Plinko Wars backend started`);
   console.log(`⛓️ Gorbagana Testnet integration enabled`);
+  console.log(`📡 Broadcasting enabled for room updates`);
 });
 
 // Graceful shutdown

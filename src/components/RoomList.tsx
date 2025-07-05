@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Users, Trophy, Clock, Play, Plus } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
@@ -9,7 +9,14 @@ import toast from 'react-hot-toast';
 export const RoomList: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const { rooms, joinRoom, currentPlayer } = useGameStore();
+  const { rooms, joinRoom, currentPlayer, refreshRooms } = useGameStore();
+
+  // 🔧 FIXED: Refresh rooms when component mounts and when connected
+  useEffect(() => {
+    if (currentPlayer) {
+      refreshRooms();
+    }
+  }, [currentPlayer, refreshRooms]);
 
   const handleJoinRoom = (roomId: string) => {
     if (currentPlayer) {
@@ -24,8 +31,16 @@ export const RoomList: React.FC = () => {
       // Get the server URL dynamically
       const hostname = window.location.hostname;
       const serverPort = import.meta.env.VITE_SERVER_PORT || '3001';
-      const wsHostname = hostname.replace(/--5173--/, `--${serverPort}--`);
+      let wsHostname = hostname;
+      
+      if (hostname.includes('--5173--')) {
+        wsHostname = hostname.replace('--5173--', `--${serverPort}--`);
+      }
+      
       const serverUrl = `http://${wsHostname}:${serverPort}`;
+      
+      console.log('🏠 Creating room with data:', roomData);
+      console.log('📡 Using server URL:', serverUrl);
       
       const response = await fetch(`${serverUrl}/api/rooms`, {
         method: 'POST',
@@ -41,11 +56,15 @@ export const RoomList: React.FC = () => {
 
       const newRoom = await response.json();
       
+      console.log('✅ Room created successfully:', newRoom);
       toast.success(`Room "${roomData.name}" created successfully!`);
       setShowCreateModal(false);
       
-      // The room list will be updated via WebSocket broadcast from the server
-      console.log('Room created:', newRoom);
+      // 🔧 FIXED: The server now broadcasts to all clients, but also refresh locally to ensure sync
+      setTimeout(() => {
+        refreshRooms();
+        console.log('🔄 Refreshed rooms after creation');
+      }, 500); // Small delay to ensure server broadcast is processed
       
     } catch (error) {
       console.error('Error creating room:', error);
@@ -96,7 +115,7 @@ export const RoomList: React.FC = () => {
               Game Rooms
             </h1>
             <p className="text-gray-400 text-lg">
-              Join a room or create your own to start playing
+              Join a room or create your own to start playing • {rooms.length} active rooms
             </p>
           </div>
           
@@ -133,6 +152,16 @@ export const RoomList: React.FC = () => {
           </motion.button>
         </div>
       </motion.div>
+
+      {/* Debug/Manual Refresh Button */}
+      <div className="mb-4 flex justify-end">
+        <button
+          onClick={refreshRooms}
+          className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm transition-colors"
+        >
+          🔄 Refresh Rooms
+        </button>
+      </div>
 
       {/* Rooms Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

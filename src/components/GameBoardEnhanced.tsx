@@ -23,84 +23,54 @@ const PLINKO_SLOTS: PlinkoSlot[] = [
   { id: 15, multiplier: 8, color: 'from-red-500 to-red-600', position: 14 },
 ];
 
-export const GameBoard: React.FC = () => {
+export const GameBoardEnhanced: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ballManagerRef = useRef<BallManager | null>(null);
   const [winningSlot, setWinningSlot] = useState<number | null>(null);
   const [showWinAnimation, setShowWinAnimation] = useState(false);
-  const { selectedSlot, setSelectedSlot, ballAnimating, setBallAnimating } = useGameStore();
+  const { selectedSlot, setSelectedSlot, ballAnimating, setBallAnimating, currentRound } = useGameStore();
 
-  // Initialize BallManager with original plinkoo implementation
+  // Initialize BallManager
   useEffect(() => {
     if (canvasRef.current && !ballManagerRef.current) {
       const ballManager = new BallManager(
         canvasRef.current,
         (slotNumber: number) => {
-          console.log('🎯 ORIGINAL PLINKOO: Ball landed in slot:', slotNumber);
+          console.log('🎯 Ball landed in slot:', slotNumber);
           setWinningSlot(slotNumber);
           setShowWinAnimation(true);
           setBallAnimating(false);
           
-          // IMMEDIATE SCORING UPDATE - Update game state immediately
-          const { selectedSlot, betAmount } = useGameStore.getState();
-          if (selectedSlot === slotNumber) {
-            const multiplier = PLINKO_SLOTS.find(s => s.id === slotNumber)?.multiplier || 1;
-            const winnings = betAmount * multiplier;
-            console.log(`🏆 WINNER! Slot ${slotNumber} hit! Winnings: ${winnings}`);
-            
-            // Update footer/score immediately
-            window.dispatchEvent(new CustomEvent('ballLanded', {
-              detail: { 
-                slotNumber, 
-                isWinner: true, 
-                winnings,
-                multiplier 
-              }
-            }));
-          } else {
-            console.log(`😭 Ball landed on ${slotNumber}, selected ${selectedSlot}`);
-            
-            // Update footer/score immediately
-            window.dispatchEvent(new CustomEvent('ballLanded', {
-              detail: { 
-                slotNumber, 
-                isWinner: false, 
-                winnings: 0,
-                multiplier: PLINKO_SLOTS.find(s => s.id === slotNumber)?.multiplier || 1
-              }
-            }));
-          }
-          
           // Flash the winning slot for 2 seconds
           setTimeout(() => {
             setShowWinAnimation(false);
-            // ORIGINAL PLINKOO STYLE - Reset game after animation
-            useGameStore.getState().resetGame();
           }, 2000);
         }
       );
       ballManagerRef.current = ballManager;
     }
 
-    // FIXED: Comprehensive cleanup
+    // Cleanup
     return () => {
       if (ballManagerRef.current) {
-        ballManagerRef.current.destroy();
+        ballManagerRef.current.stop();
         ballManagerRef.current = null;
       }
     };
-  }, []); // FIXED: Empty dependency array
+  }, []);
 
-  // Handle ball animation triggered by game state - ORIGINAL PLINKOO STYLE
+  // Handle ball animation triggered by game state
   useEffect(() => {
     if (ballAnimating && ballManagerRef.current) {
-      // Use original plinkoo ball drop - simple addBall() call
-      console.log('🎲 Starting original plinkoo ball drop...');
-      ballManagerRef.current.addBall(); // Original plinkoo method
+      // Add slight random offset to starting position for more natural variation
+      const randomOffset = (Math.random() - 0.5) * 60; // ±30 pixels
+      const startX = WIDTH / 2 + randomOffset;
+      
+      ballManagerRef.current.addBall(startX);
       setWinningSlot(null);
       setShowWinAnimation(false);
     }
-  }, [ballAnimating]); // FIXED: Add ballAnimating dependency
+  }, [ballAnimating]);
 
   const handleSlotClick = (slot: PlinkoSlot) => {
     if (!ballAnimating && !ballManagerRef.current?.isAnimating()) {
@@ -128,22 +98,22 @@ export const GameBoard: React.FC = () => {
     <div className="relative w-full max-w-4xl mx-auto">
       {/* GameBoard Header */}
       <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-3 rounded-t-lg mb-2 text-center font-bold">
-        🎯 Plinko Game Board - Original Plinkoo Physics
+        🎯 Enhanced Plinko Game Board
       </div>
       
-      {/* Plinko Board with Clean plinkoo Physics */}
+      {/* Plinko Board with Physics Engine */}
       <div className="relative bg-gradient-to-b from-slate-800 to-slate-900 rounded-2xl p-8 shadow-2xl">
         
-        {/* Canvas for Original Plinkoo Physics */}
-        <div className="relative h-[500px] mb-8 border-2 border-slate-600 rounded-lg overflow-hidden bg-black">
+        {/* Canvas for Physics-Based Animation */}
+        <div className="relative h-96 mb-8 border-2 border-slate-600 rounded-lg overflow-hidden bg-slate-700">
           <canvas
             ref={canvasRef}
             width={WIDTH}
             height={HEIGHT}
-            className="absolute inset-0 w-full h-full object-contain"
+            className="absolute inset-0 w-full h-full"
             style={{ 
-              background: 'black', // Original plinkoo background
-              imageRendering: 'auto'
+              background: 'linear-gradient(to bottom, #334155, #1e293b)',
+              imageRendering: 'crisp-edges'
             }}
           />
           
@@ -184,10 +154,10 @@ export const GameBoard: React.FC = () => {
         {/* Game Instructions */}
         <div className="mb-6 text-center">
           <h3 className="text-white text-xl font-bold mb-3">
-            🎯 Original Plinkoo Physics - Authentic Ball Motion!
+            Choose Your Lucky Slot & Drop the Ball!
           </h3>
           <p className="text-gray-300 text-sm">
-            Select a slot and experience the exact ball physics from the original plinkoo game!
+            Select any slot (1-15) and click "Add Ball" to watch realistic physics in action
           </p>
           {winningSlot && (
             <motion.div
@@ -203,7 +173,7 @@ export const GameBoard: React.FC = () => {
           )}
         </div>
         
-        {/* Add Ball Button - Clean and Simple */}
+        {/* Enhanced Add Ball Button */}
         <div className="flex justify-center mb-6">
           <button 
             onClick={handleStartGame}
@@ -218,13 +188,13 @@ export const GameBoard: React.FC = () => {
             disabled={!selectedSlot || ballAnimating || ballManagerRef.current?.isAnimating()}
           >
             {ballAnimating || ballManagerRef.current?.isAnimating() 
-              ? '🎲 Original Plinkoo Ball Dropping...' 
-              : '🎲 Drop Ball (Original Plinkoo)'
+              ? '🎲 Ball Dropping...' 
+              : '🎲 Add Ball'
             }
           </button>
         </div>
 
-        {/* Slot Grid */}
+        {/* Enhanced Slot Grid */}
         <div className="flex flex-wrap justify-center gap-1 max-w-4xl mx-auto">
           {PLINKO_SLOTS.map((slot) => (
             <motion.button
@@ -265,7 +235,7 @@ export const GameBoard: React.FC = () => {
               <span className="text-xs opacity-80">#{slot.id}</span>
               <span className="text-sm sm:text-lg font-black">{slot.multiplier}x</span>
               
-              {/* Winning Animation */}
+              {/* Enhanced Winning Animation */}
               {winningSlot === slot.id && showWinAnimation && (
                 <motion.div
                   initial={{ scale: 0, rotate: 0 }}
@@ -317,10 +287,10 @@ export const GameBoard: React.FC = () => {
               className="p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-lg"
             >
               <p className="text-xl font-bold text-yellow-400 mb-2">
-                🎲 Original Plinkoo Physics in Action!
+                🎲 Realistic physics ball is dropping...
               </p>
               <p className="text-sm text-yellow-300">
-                Watch the red ball follow authentic plinkoo collision mechanics!
+                Watch the ball bounce off pegs with real collision detection!
               </p>
             </motion.div>
           )}
@@ -328,7 +298,7 @@ export const GameBoard: React.FC = () => {
 
         {/* Physics Info */}
         <div className="mt-4 text-center text-sm text-gray-400">
-          <p>✨ Authentic original plinkoo physics: exact collision detection, ball motion, and obstacle layout from the working plinkoo game</p>
+          <p>✨ Enhanced with realistic physics: gravity, friction, collision detection & bouncing effects</p>
         </div>
       </div>
     </div>

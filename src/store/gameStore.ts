@@ -37,6 +37,8 @@ interface GameStore {
   
   // Room actions
   setRooms: (rooms: Room[]) => void;
+  addRoom: (room: Room) => void;
+  refreshRooms: () => Promise<void>;
   joinRoom: (roomId: string) => void;
   leaveRoom: () => void;
   
@@ -45,6 +47,7 @@ interface GameStore {
   setSelectedSlot: (slot: number | null) => void;
   setBetAmount: (amount: number) => void;
   setShowBetModal: (show: boolean) => void;
+  resetGame: () => void;
   
   // Auto game flow actions
   startBettingPhase: () => void;
@@ -106,32 +109,22 @@ export const useGameStore = create<GameStore>()(
       // Get auth token
       const token = localStorage.getItem('auth_token');
       
-      // Construct WebSocket URL dynamically
-      const clientHostname = window.location.hostname; // e.g., "localhost" or "something--5173--hash.host.com"
-      const clientPort = window.location.port; // e.g., "5173"
+      // FIXED: Simplified WebSocket URL construction
+      const isDev = import.meta.env.DEV;
       const serverPort = import.meta.env.VITE_SERVER_PORT || '3001';
-
-      let wsHostname = clientHostname;
-      let wsPort = serverPort; // Default to serverPort for WebSocket connection
-
-      // Check if running locally
-      if (clientHostname === 'localhost' || clientHostname === '127.0.0.1') {
-        // For local development, wsHostname is already correct (localhost),
-        // and we explicitly use serverPort for the WebSocket connection.
-        // wsPort is already set to serverPort.
-      } else if (clientPort && clientHostname.includes(`--${clientPort}--`)) {
-        // For environments where client port is part of the hostname (e.g., webcontainer pattern)
-        // Try to replace client port part in hostname with server port part
-        wsHostname = clientHostname.replace(`--${clientPort}--`, `--${serverPort}--`);
-        // In this case, the port is part of the hostname, so we don't specify it separately in the URL.
-        wsPort = ''; 
-      }
-      // If it's not localhost and not the webcontainer pattern,
-      // it will default to using clientHostname and serverPort, e.g., ws://custom.domain:3001
-
-      const wsUrl = `ws://${wsHostname}${wsPort ? `:${wsPort}` : ''}?token=${token}&address=${walletAddress}`;
       
-      console.log(`Attempting WebSocket connection to: ${wsUrl}`); // Added for debugging
+      let wsUrl: string;
+      
+      if (isDev) {
+        // Development: always use localhost
+        wsUrl = `ws://localhost:${serverPort}?token=${token}&address=${walletAddress}`;
+      } else {
+        // Production: use current hostname with server port
+        const hostname = window.location.hostname;
+        wsUrl = `ws://${hostname}:${serverPort}?token=${token}&address=${walletAddress}`;
+      }
+      
+      console.log(`🔗 WebSocket connecting to: ${wsUrl}`);
       
       const ws = new WebSocket(wsUrl);
       
@@ -179,6 +172,37 @@ export const useGameStore = create<GameStore>()(
     // Room actions
     setRooms: (rooms: Room[]) => set({ rooms }),
     
+    // 🔧 NEW: Add individual room to list
+    addRoom: (room: Room) => {
+      set((state) => ({
+        rooms: [...state.rooms, room]
+      }));
+    },
+    
+    // 🔧 NEW: Refresh rooms from server
+    refreshRooms: async () => {
+      try {
+        const hostname = window.location.hostname;
+        const serverPort = import.meta.env.VITE_SERVER_PORT || '3001';
+        let wsHostname = hostname;
+        
+        if (hostname.includes('--5173--')) {
+          wsHostname = hostname.replace('--5173--', `--${serverPort}--`);
+        }
+        
+        const serverUrl = `http://${wsHostname}:${serverPort}`;
+        const response = await fetch(`${serverUrl}/api/rooms`);
+        
+        if (response.ok) {
+          const rooms = await response.json();
+          set({ rooms });
+          console.log('🔄 Refreshed rooms:', rooms.length);
+        }
+      } catch (error) {
+        console.error('Failed to refresh rooms:', error);
+      }
+    },
+    
     joinRoom: (roomId: string) => {
       get().sendMessage({
         type: 'room_update',
@@ -199,7 +223,7 @@ export const useGameStore = create<GameStore>()(
       set({ currentRoom: null, chatMessages: [] });
     },
     
-    // Updated placeBet with automatic game flow
+    // Updated placeBet with original plinkoo integration
     placeBet: async (slotNumber: number, amount: number, transactionSignature?: string) => {
       try {
         // If we have a transaction signature, verify it first
@@ -230,33 +254,14 @@ export const useGameStore = create<GameStore>()(
         
         set({ showBetModal: false });
         
-        // 🎮 START AUTOMATED GAME FLOW
-        console.log('🎮 Starting automated game flow...');
+        // 🎯 ORIGINAL PLINKOO STYLE - Simple ball drop
+        console.log('🎯 Starting original plinkoo ball drop...');
         
-        // Step 1: Start betting phase immediately
-        get().startBettingPhase();
+        // Start ball animation immediately - let original plinkoo physics handle the rest
+        set({ ballAnimating: true });
         
-        // Step 2: Wait 1 second, then start ball drop
-        setTimeout(async () => {
-          // Generate random winning slot (or use selected slot 40% of the time for better UX)
-          const useSelectedSlot = Math.random() < 0.4; // 40% chance to win
-          const randomSlot = Math.floor(Math.random() * 15) + 1;
-          const finalWinningSlot = useSelectedSlot ? slotNumber : randomSlot;
-          
-          await get().startBallDrop(finalWinningSlot);
-        }, 1000);
-        
-        // Step 3: Wait 5 seconds for ball animation, then show results
-        setTimeout(() => {
-          const { currentRound } = get();
-          const winningSlot = currentRound?.winningSlot || slotNumber;
-          get().showResults(winningSlot);
-        }, 6000);
-        
-        // Step 4: Wait 3 seconds to show results, then reset
-        setTimeout(() => {
-          get().resetToWaiting();
-        }, 9000);
+        // The ball will land wherever the original plinkoo physics takes it
+        // Scoring will be handled by the ballLanded event in GameBoard
         
       } catch (error) {
         console.error('Bet placement error:', error);
@@ -267,6 +272,15 @@ export const useGameStore = create<GameStore>()(
     setSelectedSlot: (slot: number | null) => set({ selectedSlot: slot }),
     setBetAmount: (amount: number) => set({ betAmount: amount }),
     setShowBetModal: (show: boolean) => set({ showBetModal: show }),
+    
+    // ORIGINAL PLINKOO STYLE - Simple reset after ball lands
+    resetGame: () => {
+      console.log('🔄 Resetting game after ball landed (original plinkoo style)');
+      set({ 
+        ballAnimating: false,
+        selectedSlot: null
+      });
+    },
     
     // Automated Game Flow Functions
     startBettingPhase: () => {

@@ -4,7 +4,8 @@ import type { MessageType } from '../types/game';
 
 export class ChatManager {
   constructor(private wss: WebSocketServer) {
-    this.ensureSystemPlayer();
+    // Removed automatic system player creation to prevent startup errors
+    // System player will be created when first needed
   }
 
   private async ensureSystemPlayer() {
